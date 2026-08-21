@@ -1,7 +1,7 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
-const idPattern = /^[a-zA-Z0-9]{16}$/;
+const idPattern = /^[a-zA-Z0-9]{10}$/;
 
 async function post<T>(path: string, body: Record<string, unknown> = {}) {
 	const response = await SELF.fetch(`http://local.test${path}`, {
@@ -297,7 +297,7 @@ describe("Lucky ordering API", () => {
 			}>("/sellable-products/create", {
 				sellable_product_ids: ["prod-007"],
 				sellable_sku_codes: ["sku-007"],
-				order_user_id: "unknownUser00001",
+				order_user_id: "AbC123xYz9",
 			});
 
 			expect(response.status).toBe(400);

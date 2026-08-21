@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const idSchema = z.string().regex(/^[a-zA-Z0-9]{16}$/);
+export const idSchema = z.string().regex(/^[a-zA-Z0-9]{10}$/);
 export const orderUserStatusSchema = z.enum(["enabled", "disabled"]);
 
 export const orderUserRowSchema = z.object({

@@ -21,7 +21,7 @@
 
 Cover:
 
-- `POST /order-users/create` creates a row with a generated 16-character id.
+- `POST /order-users/create` creates a row with a generated 10-character id.
 - Create defaults `type` to `lucky`, `status` to `enabled`, and `is_delete` to `0`.
 - `POST /order-users/list` returns active rows.
 - `POST /order-users/read` reads by body `{ id }`.
@@ -81,7 +81,7 @@ Create:
 - `lucky_order_users`
 - `lucky_sellable_products`
 
-Use TEXT primary keys for 16-character ids and a foreign key from `lucky_sellable_products.order_user_id` to `lucky_order_users.id`.
+Use TEXT primary keys for 10-character ids and a foreign key from `lucky_sellable_products.order_user_id` to `lucky_order_users.id`.
 
 **Step 2: Run tests**
 
@@ -103,7 +103,7 @@ Expected: Still FAIL because routes are not implemented.
 
 **Step 1: Add id generator**
 
-Implement a 16-character id generator using `crypto.getRandomValues` and the alphabet `abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789`.
+Implement a 10-character id generator using nanoid and the alphabet `abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789`.
 
 **Step 2: Add response helpers**
 

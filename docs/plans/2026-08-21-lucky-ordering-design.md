@@ -12,7 +12,7 @@ Replace the template tables and routes with a clean starting point for a Luckin 
   - `lucky_sellable_products`
 - Expose POST-only CRUD routes.
 - Pass every parameter through JSON request bodies, including ids for read, update, and delete operations.
-- Generate all ids server-side as 16-character strings using only `a-zA-Z0-9`.
+- Generate all ids server-side as 10-character strings using only `a-zA-Z0-9`.
 - Use soft delete by setting `is_delete = 1`.
 
 ## Table: lucky_order_users
@@ -90,7 +90,7 @@ Keep the existing template response style:
 Replace template integration tests with tests for:
 
 - POST-only route behavior.
-- Server-generated 16-character ids.
+- Server-generated 10-character ids.
 - Default values.
 - Soft deletes.
 - JSON array serialization.
