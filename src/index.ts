@@ -1,8 +1,8 @@
 import { ApiException, fromHono } from "chanfana";
 import { Hono } from "hono";
-import { tasksRouter } from "./endpoints/tasks/router";
 import { ContentfulStatusCode } from "hono/utils/http-status";
-import { DummyEndpoint } from "./endpoints/dummyEndpoint";
+import { orderUsersRouter } from "./endpoints/orderUsers/router";
+import { sellableProductsRouter } from "./endpoints/sellableProducts/router";
 
 // Start a Hono app
 const app = new Hono<{ Bindings: Env }>();
@@ -33,18 +33,15 @@ const openapi = fromHono(app, {
 	docs_url: "/",
 	schema: {
 		info: {
-			title: "My Awesome API",
+			title: "Lucky Ordering API",
 			version: "2.0.0",
-			description: "This is the documentation for my awesome API.",
+			description: "POST-only CRUD API for Luckin proxy ordering.",
 		},
 	},
 });
 
-// Register Tasks Sub router
-openapi.route("/tasks", tasksRouter);
-
-// Register other endpoints
-openapi.post("/dummy/:slug", DummyEndpoint);
+openapi.route("/order-users", orderUsersRouter);
+openapi.route("/sellable-products", sellableProductsRouter);
 
 // Export the Hono app
 export default app;

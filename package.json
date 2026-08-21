@@ -1,8 +1,8 @@
 {
 	"name": "lucky",
-	"description": "Complete backend API template using Hono + Chanfana + D1 + Vitest.",
+	"description": "Luckin proxy ordering API using Hono + Chanfana + D1 + Vitest.",
 	"cloudflare": {
-		"label": "Backend OpenAPI Template",
+		"label": "Lucky Ordering API",
 		"products": [
 			"Workers",
 			"D1"
