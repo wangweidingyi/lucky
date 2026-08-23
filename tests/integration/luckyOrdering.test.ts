@@ -1,5 +1,10 @@
-import { SELF } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import {
+	QueryShopListError,
+	queryShopListForSellableProduct,
+} from "../../src/controller/order/queryShopList";
+import { forwardLuckinMcpToolForSellableProduct } from "../../src/controller/order/luckinMcp";
 
 const idPattern = /^[a-zA-Z0-9]{10}$/;
 
@@ -347,6 +352,325 @@ describe("Lucky ordering API", () => {
 			}>("/sellable-products/read", { id: create.body.result.id });
 			expect(readAfter.response.status).toBe(200);
 			expect(readAfter.body.result.status).toBe("pending");
+		});
+	});
+
+	describe("POST /order/queryShopList", () => {
+		it("forwards queryShopList with the token from the sellable product order user", async () => {
+			const user = await createOrderUser({ token: "luckin-user-token" });
+			const create = await post<{
+				success: boolean;
+				result: { id: string };
+			}>("/sellable-products/create", {
+				sellable_product_ids: ["prod-shop-001"],
+				sellable_sku_codes: ["sku-shop-001"],
+				order_user_id: user.id,
+			});
+			expect(create.response.status).toBe(201);
+
+			const calls: Request[] = [];
+			const fetcher: typeof fetch = async (input, init) => {
+				const request = new Request(input, init);
+				calls.push(request.clone());
+				expect(request.url).toBe("https://gwmcp.lkcoffee.com/order/user/mcp");
+				expect(request.method).toBe("POST");
+				expect(request.headers.get("authorization")).toBe(
+					"Bearer luckin-user-token",
+				);
+				expect(request.headers.get("accept")).toBe(
+					"application/json, text/event-stream",
+				);
+				expect(request.headers.get("content-type")).toBe("application/json");
+				expect(await request.json()).toEqual({
+					jsonrpc: "2.0",
+					id: "queryShopList",
+					method: "tools/call",
+					params: {
+						name: "queryShopList",
+						arguments: {
+							deptName: "海西金谷",
+							longitude: 118.08891,
+							latitude: 24.479627,
+						},
+					},
+				});
+
+				return Response.json({
+					jsonrpc: "2.0",
+					id: "queryShopList",
+					result: {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify({
+									code: 0,
+									msg: "success",
+									success: true,
+									data: [
+										{
+											deptId: 245062453,
+											deptName: "AI点单专用",
+											address: "北京安贞环宇荟",
+											deptTags: [],
+											longitude: 116.392435,
+											latitude: 39.982376,
+											workTimeStart: "00:00",
+											workTimeEnd: "24:00",
+											distance: 8.2038,
+											number: "(No.100070)",
+										},
+									],
+								}),
+							},
+						],
+					},
+				});
+			};
+
+			const result = await queryShopListForSellableProduct(env.DB, fetcher, {
+				id: create.body.result.id,
+				sign: "AbC123xYz9",
+				deptName: "海西金谷",
+				longitude: 118.08891,
+				latitude: 24.479627,
+			});
+
+			expect(calls).toHaveLength(1);
+			expect(result).toEqual([
+				expect.objectContaining({
+					deptId: 245062453,
+					deptName: "AI点单专用",
+				}),
+			]);
+		});
+
+		it("maps non-JSON Luckin MCP failures to a 502 forwarding error", async () => {
+			const user = await createOrderUser({ token: "luckin-user-token" });
+			const create = await post<{
+				success: boolean;
+				result: { id: string };
+			}>("/sellable-products/create", {
+				sellable_product_ids: ["prod-shop-002"],
+				sellable_sku_codes: ["sku-shop-002"],
+				order_user_id: user.id,
+			});
+			expect(create.response.status).toBe(201);
+
+			const fetcher: typeof fetch = async () =>
+				new Response("bad gateway", { status: 503 });
+
+			await expect(
+				queryShopListForSellableProduct(env.DB, fetcher, {
+					id: create.body.result.id,
+					sign: "AbC123xYz9",
+					deptName: "海西金谷",
+					longitude: 118.08891,
+					latitude: 24.479627,
+				}),
+			).rejects.toMatchObject<QueryShopListError>({
+				message: "Luckin MCP request failed",
+				status: 502,
+			});
+		});
+	});
+
+	describe("POST /order/* Luckin MCP tool forwards", () => {
+		it.each([
+			[
+				"searchProductForMcp",
+				{
+					deptId: 245062453,
+					query: "拿铁",
+				},
+				[{ productId: 11447, productName: "耶加雪菲拿铁" }],
+			],
+			[
+				"switchProduct",
+				{
+					deptId: 245062453,
+					productId: 17443,
+					skuCode: "SP11795-00006",
+					attrOperationParam: {
+						attributeId: 122,
+						subAttr: {
+							attributeId: 428,
+							operation: 3,
+						},
+					},
+					amount: 1,
+				},
+				{ productId: 17443, skuCode: "SP11795-00006" },
+			],
+			[
+				"queryProductDetailInfo",
+				{
+					deptId: 245062453,
+					productId: 17443,
+				},
+				{ productId: 17443, productName: "冬至五养拿铁" },
+			],
+			[
+				"previewOrder",
+				{
+					deptId: 245062453,
+					productList: [
+						{
+							amount: 1,
+							productId: 11447,
+							skuCode: "SP9636-00001",
+						},
+					],
+				},
+				{ discountPrice: 16, couponCodeList: [] },
+			],
+			[
+				"createOrder",
+				{
+					deptId: 245062453,
+					productList: [
+						{
+							amount: 1,
+							productId: 11447,
+							skuCode: "SP9636-00001",
+						},
+					],
+					longitude: 118.08891,
+					latitude: 24.479627,
+					couponCodeList: ["coupon-001"],
+					remark: "少冰",
+				},
+				{
+					orderId: 7639308439653908000,
+					orderIdStr: "7639308439653908490",
+				},
+			],
+			[
+				"queryOrderDetailInfo",
+				{
+					orderId: "7639308439653908490",
+				},
+				{
+					orderId: "7639308439653908490",
+					orderStatusName: "待付款",
+				},
+			],
+			[
+				"cancelOrder",
+				{
+					orderId: "7639308439653908490",
+				},
+				true,
+			],
+		])("forwards %s with id/sign gated token lookup", async (toolName, args, responseData) => {
+			const user = await createOrderUser({ token: `${toolName}-token` });
+			const create = await post<{
+				success: boolean;
+				result: { id: string };
+			}>("/sellable-products/create", {
+				sellable_product_ids: [`prod-${toolName}`],
+				sellable_sku_codes: [`sku-${toolName}`],
+				order_user_id: user.id,
+			});
+			expect(create.response.status).toBe(201);
+
+			const fetcher: typeof fetch = async (input, init) => {
+				const request = new Request(input, init);
+				expect(request.url).toBe("https://gwmcp.lkcoffee.com/order/user/mcp");
+				expect(request.headers.get("authorization")).toBe(
+					`Bearer ${toolName}-token`,
+				);
+				expect(await request.json()).toEqual({
+					jsonrpc: "2.0",
+					id: toolName,
+					method: "tools/call",
+					params: {
+						name: toolName,
+						arguments: args,
+					},
+				});
+
+				return Response.json({
+					jsonrpc: "2.0",
+					id: toolName,
+					result: {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify({
+									code: 0,
+									msg: "success",
+									success: true,
+									data: responseData,
+								}),
+							},
+						],
+					},
+				});
+			};
+
+			await expect(
+				forwardLuckinMcpToolForSellableProduct(env.DB, fetcher, {
+					id: create.body.result.id,
+					sign: "AbC123xYz9",
+					toolName,
+					arguments: args,
+				}),
+			).resolves.toEqual(responseData);
+		});
+
+		it.each([
+			["searchProductForMcp", { deptId: 245062453, query: "拿铁" }],
+			[
+				"switchProduct",
+				{
+					deptId: 245062453,
+					productId: 17443,
+					skuCode: "SP11795-00006",
+					attrOperationParam: {
+						attributeId: 122,
+						subAttr: { attributeId: 428, operation: 3 },
+					},
+					amount: 1,
+				},
+			],
+			[
+				"queryProductDetailInfo",
+				{ deptId: 245062453, productId: 17443 },
+			],
+			[
+				"previewOrder",
+				{
+					deptId: 245062453,
+					productList: [
+						{ amount: 1, productId: 11447, skuCode: "SP9636-00001" },
+					],
+				},
+			],
+			[
+				"createOrder",
+				{
+					deptId: 245062453,
+					productList: [
+						{ amount: 1, productId: 11447, skuCode: "SP9636-00001" },
+					],
+					longitude: 118.08891,
+					latitude: 24.479627,
+				},
+			],
+			["queryOrderDetailInfo", { orderId: "7639308439653908490" }],
+			["cancelOrder", { orderId: "7639308439653908490" }],
+		])("requires id and sign for %s", async (toolName, args) => {
+			const missingId = await post(`/order/${toolName}`, {
+				...args,
+				sign: "AbC123xYz9",
+			});
+			expect(missingId.response.status).toBe(400);
+
+			const missingSign = await post(`/order/${toolName}`, {
+				id: "AbC123xYz9",
+				...args,
+			});
+			expect(missingSign.response.status).toBe(400);
 		});
 	});
 });
