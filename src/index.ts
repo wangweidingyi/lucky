@@ -3,6 +3,8 @@ import { Hono } from "hono";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 import { orderUsersRouter } from "./endpoints/orderUsers/router";
 import { sellableProductsRouter } from "./endpoints/sellableProducts/router";
+import { orderRouter } from "./controller/order/order";
+import { xyOrderRouter } from "./controller/xyorder/xyorder";
 
 // Start a Hono app
 const app = new Hono<{ Bindings: Env }>();
@@ -42,6 +44,10 @@ const openapi = fromHono(app, {
 
 openapi.route("/order-users", orderUsersRouter);
 openapi.route("/sellable-products", sellableProductsRouter);
+
+openapi.route("/order", orderRouter);
+openapi.route("/xy/order", xyOrderRouter);
+
 
 // Export the Hono app
 export default app;

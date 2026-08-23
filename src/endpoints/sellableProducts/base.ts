@@ -2,12 +2,14 @@ import { z } from "zod";
 import { idSchema } from "../orderUsers/base";
 
 const optionalNullableString = z.string().optional().nullable();
+export const sellableProductStatusSchema = z.enum(["waiting", "pending"]);
 
 export const sellableProductRowSchema = z.object({
 	id: idSchema,
 	sellable_product_ids: z.array(z.string()),
 	sellable_sku_codes: z.array(z.string()),
 	sellable_quantity: z.number().int().positive(),
+	status: sellableProductStatusSchema,
 	order_user_id: idSchema,
 	third_party_remark_id: z.string().regex(/^[a-zA-Z0-9]{3}$/).nullable(),
 	third_party_order_id: z.string().nullable(),
@@ -19,6 +21,7 @@ export const sellableProductCreateBodySchema = z.object({
 	sellable_product_ids: z.array(z.string()).min(1),
 	sellable_sku_codes: z.array(z.string()).min(1),
 	sellable_quantity: z.number().int().positive().optional().default(1),
+	status: sellableProductStatusSchema.optional().default("waiting"),
 	order_user_id: idSchema,
 	third_party_remark_id: z
 		.string()
@@ -37,6 +40,7 @@ export const sellableProductUpdateBodySchema = sellableProductIdBodySchema.exten
 	sellable_product_ids: z.array(z.string()).min(1).optional(),
 	sellable_sku_codes: z.array(z.string()).min(1).optional(),
 	sellable_quantity: z.number().int().positive().optional(),
+	status: sellableProductStatusSchema.optional(),
 	order_user_id: idSchema.optional(),
 	third_party_remark_id: z
 		.string()

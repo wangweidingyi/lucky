@@ -41,18 +41,20 @@ export class SellableProductCreate extends OpenAPIRoute {
 				sellable_product_ids,
 				sellable_sku_codes,
 				sellable_quantity,
+				status,
 				order_user_id,
 				third_party_remark_id,
 				third_party_order_id,
 				third_party_product_id
 			)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		)
 			.bind(
 				id,
 				serializeArray(data.body.sellable_product_ids),
 				serializeArray(data.body.sellable_sku_codes),
 				data.body.sellable_quantity,
+				data.body.status,
 				data.body.order_user_id,
 				data.body.third_party_remark_id ?? null,
 				data.body.third_party_order_id ?? null,

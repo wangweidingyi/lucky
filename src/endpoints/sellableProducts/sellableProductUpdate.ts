@@ -13,6 +13,7 @@ const updateColumns = [
 	"sellable_product_ids",
 	"sellable_sku_codes",
 	"sellable_quantity",
+	"status",
 	"order_user_id",
 	"third_party_remark_id",
 	"third_party_order_id",

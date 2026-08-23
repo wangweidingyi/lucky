@@ -169,6 +169,7 @@ describe("Lucky ordering API", () => {
 					sellable_product_ids: string[];
 					sellable_sku_codes: string[];
 					sellable_quantity: number;
+					status: string;
 					order_user_id: string;
 					third_party_remark_id: string;
 					third_party_order_id: string;
@@ -191,6 +192,7 @@ describe("Lucky ordering API", () => {
 				sellable_product_ids: ["prod-001", "prod-002"],
 				sellable_sku_codes: ["sku-001", "sku-002"],
 				sellable_quantity: 1,
+				status: "waiting",
 				order_user_id: user.id,
 				third_party_remark_id: "A9z",
 				third_party_order_id: "third-order-001",
@@ -239,6 +241,7 @@ describe("Lucky ordering API", () => {
 					sellable_product_ids: string[];
 					sellable_sku_codes: string[];
 					sellable_quantity: number;
+					status: string;
 					third_party_order_id: string;
 				};
 			}>("/sellable-products/update", {
@@ -246,6 +249,7 @@ describe("Lucky ordering API", () => {
 				sellable_product_ids: ["prod-004", "prod-005"],
 				sellable_sku_codes: ["sku-004", "sku-005"],
 				sellable_quantity: 4,
+				status: "pending",
 				third_party_order_id: "third-order-002",
 			});
 			expect(update.response.status).toBe(200);
@@ -255,6 +259,7 @@ describe("Lucky ordering API", () => {
 					sellable_product_ids: ["prod-004", "prod-005"],
 					sellable_sku_codes: ["sku-004", "sku-005"],
 					sellable_quantity: 4,
+					status: "pending",
 					third_party_order_id: "third-order-002",
 				}),
 			);
@@ -303,6 +308,45 @@ describe("Lucky ordering API", () => {
 			expect(response.status).toBe(400);
 			expect(body.success).toBe(false);
 			expect(body.errors[0].message).toContain("order_user_id");
+		});
+	});
+
+	describe("POST /xy/order/xiadan", () => {
+		it("marks a sellable product order as pending by orderId", async () => {
+			const user = await createOrderUser();
+			const create = await post<{
+				success: boolean;
+				result: { id: string; status: string };
+			}>("/sellable-products/create", {
+				sellable_product_ids: ["prod-xy-001"],
+				sellable_sku_codes: ["sku-xy-001"],
+				order_user_id: user.id,
+				third_party_remark_id: "X1y",
+				third_party_order_id: "xy-order-001",
+				third_party_product_id: "xy-product-001",
+			});
+			expect(create.response.status).toBe(201);
+			expect(create.body.result.status).toBe("waiting");
+
+			const xiadan = await post<{
+				code?: number;
+				success?: boolean;
+				result: { id: string; status: string };
+			}>("/xy/order/xiadan", { orderId: "xy-order-001" });
+			expect(xiadan.response.status).toBe(200);
+			expect(xiadan.body.result).toEqual(
+				expect.objectContaining({
+					id: create.body.result.id,
+					status: "pending",
+				}),
+			);
+
+			const readAfter = await post<{
+				success: boolean;
+				result: { id: string; status: string };
+			}>("/sellable-products/read", { id: create.body.result.id });
+			expect(readAfter.response.status).toBe(200);
+			expect(readAfter.body.result.status).toBe("pending");
 		});
 	});
 });
