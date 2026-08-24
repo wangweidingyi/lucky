@@ -17,6 +17,17 @@ Stores Luckin users that can place real orders.
 | `token` | `TEXT` | Luckin token |
 | `type` | `TEXT` | Defaults to `lucky` |
 | `status` | `TEXT` | `enabled` or `disabled`, defaults to `enabled` |
+| `auth_mode` | `TEXT` | `token` or `miniprogram`, defaults to `token` |
+| `uid` | `TEXT` | Optional Luckin miniprogram `uid` cookie value |
+| `openid` | `TEXT` | Optional WeChat mini-program openid for `/resource/core/v2/pay/topay` |
+| `black_box` | `TEXT` | Optional mini-program risk-control blackBox value |
+| `notify_code` | `TEXT` | Optional mini-program payment notifyCode |
+| `csid` | `TEXT` | Optional `X-LK-CSID` header value |
+| `pay_type` | `TEXT` | Optional mini-program pay type, for example `7` |
+| `miniprogram_version` | `TEXT` | Optional mini-program API version, for example `5587` |
+| `aes_key` | `TEXT` | Optional AES key override for mini-program encrypted form requests |
+| `base_url` | `TEXT` | Optional Luckin mini-program API base URL override |
+| `cookie` | `TEXT` | Optional full mini-program cookie string; `uid` is added when missing |
 | `is_delete` | `INTEGER` | Soft delete flag, defaults to `0` |
 
 ### `lucky_sellable_products`

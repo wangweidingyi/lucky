@@ -1,7 +1,10 @@
 import { contentJson, OpenAPIRoute } from "chanfana";
 import CryptoJS from "crypto-js";
 import { z } from "zod";
-import { findActiveOrderUser } from "../../models/LuckyOrderUsers";
+import {
+	findActiveOrderUser,
+	type OrderUserRow,
+} from "../../models/LuckyOrderUsers";
 import {
 	findActiveSellableProduct,
 	sellableProductIdBodySchema,
@@ -141,7 +144,10 @@ export async function miniprogramCreateOrderForSellableProduct(
 		throw new MiniprogramOrderError("Order user not found", 404);
 	}
 
-	const auth = resolveMiniprogramAuth(orderUser.token, config);
+	const auth = resolveMiniprogramAuth(
+		orderUser.token,
+		mergeMiniprogramConfig(getOrderUserMiniprogramConfig(orderUser), config),
+	);
 	assertMiniprogramPayAuth(auth);
 	const previewPayload = buildPreviewPayload(input, auth.version);
 	const previewResponse = await postLuckinJson(
@@ -487,6 +493,39 @@ function resolveMiniprogramAuth(
 		uid,
 		version,
 	};
+}
+
+function getOrderUserMiniprogramConfig(
+	orderUser: OrderUserRow,
+): MiniprogramAuthConfig {
+	return {
+		aesKey: orderUser.aes_key ?? undefined,
+		baseUrl: orderUser.base_url ?? undefined,
+		blackBox: orderUser.black_box ?? undefined,
+		cookie: orderUser.cookie ?? undefined,
+		csid: orderUser.csid ?? undefined,
+		notifyCode: orderUser.notify_code ?? undefined,
+		openid: orderUser.openid ?? undefined,
+		payType: orderUser.pay_type ?? undefined,
+		uid: orderUser.uid ?? undefined,
+		version: orderUser.miniprogram_version ?? undefined,
+	};
+}
+
+function mergeMiniprogramConfig(
+	...configs: MiniprogramAuthConfig[]
+): MiniprogramAuthConfig {
+	const merged: Record<string, unknown> = {};
+
+	for (const config of configs) {
+		for (const [key, value] of Object.entries(config)) {
+			if (value !== undefined) {
+				merged[key] = value;
+			}
+		}
+	}
+
+	return merged as MiniprogramAuthConfig;
 }
 
 const emptyMiniprogramAuthConfig = {};
