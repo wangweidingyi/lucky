@@ -5,6 +5,11 @@ import {
 	queryShopListForSellableProduct,
 } from "../../src/controller/order/queryShopList";
 import { forwardLuckinMcpToolForSellableProduct } from "../../src/controller/order/luckinMcp";
+import {
+	listLuckinProducts,
+	upsertLuckinProducts,
+} from "../../src/models/luckyProducts";
+import { syncLuckinCatalogForSellableProduct } from "../../src/controller/order/catalog";
 
 const idPattern = /^[a-zA-Z0-9]{10}$/;
 
@@ -254,7 +259,7 @@ describe("Lucky ordering API", () => {
 				sellable_product_ids: ["prod-004", "prod-005"],
 				sellable_sku_codes: ["sku-004", "sku-005"],
 				sellable_quantity: 4,
-				status: "pending",
+				status: "done",
 				third_party_order_id: "third-order-002",
 			});
 			expect(update.response.status).toBe(200);
@@ -264,7 +269,7 @@ describe("Lucky ordering API", () => {
 					sellable_product_ids: ["prod-004", "prod-005"],
 					sellable_sku_codes: ["sku-004", "sku-005"],
 					sellable_quantity: 4,
-					status: "pending",
+					status: "done",
 					third_party_order_id: "third-order-002",
 				}),
 			);
@@ -671,6 +676,277 @@ describe("Lucky ordering API", () => {
 				...args,
 			});
 			expect(missingSign.response.status).toBe(400);
+		});
+	});
+
+	describe("Luckin product catalog", () => {
+		it("upserts real Luckin catalog products and lists deserialized rows", async () => {
+			await upsertLuckinProducts(
+				env.DB,
+				[
+					{
+						productId: 11447,
+						productName: "耶加雪菲拿铁",
+						skuCode: "SP9636-00001",
+						pictureUrl: "https://img.example/latte.png",
+						initialPrice: 16,
+						estimatePrice: 15,
+						tags: ["拿铁"],
+						productAttrs: [{ attributeId: 1, attributeName: "温度" }],
+					},
+					{
+						productId: 22558,
+						productName: "标准美式",
+						skuCode: "SP22558-00001",
+						tags: ["美式"],
+					},
+				],
+				"拿铁",
+			);
+
+			await upsertLuckinProducts(
+				env.DB,
+				[
+					{
+						productId: 11447,
+						productName: "耶加雪菲拿铁",
+						skuCode: "SP9636-00001",
+						pictureUrl: "https://img.example/latte-new.png",
+						initialPrice: 18,
+						estimatePrice: 16,
+						tags: ["拿铁", "热卖"],
+					},
+				],
+				"拿铁",
+			);
+
+			const products = await listLuckinProducts(env.DB);
+
+			expect(products).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						productId: 11447,
+						productName: "耶加雪菲拿铁",
+						skuCode: "SP9636-00001",
+						pictureUrl: "https://img.example/latte-new.png",
+						initialPrice: 18,
+						estimatePrice: 16,
+						tags: ["拿铁", "热卖"],
+						sourceQuery: "拿铁",
+					}),
+					expect.objectContaining({
+						productId: 22558,
+						productName: "标准美式",
+						skuCode: "SP22558-00001",
+						tags: ["美式"],
+					}),
+				]),
+			);
+			expect(
+				products.filter(
+					(product) =>
+						product.productId === 11447 && product.skuCode === "SP9636-00001",
+				),
+			).toHaveLength(1);
+		});
+
+		it("returns local catalog products through id and sign gated list endpoint", async () => {
+			const user = await createOrderUser({ token: "catalog-list-token" });
+			const create = await post<{
+				success: boolean;
+				result: { id: string };
+			}>("/sellable-products/create", {
+				sellable_product_ids: ["test-product"],
+				sellable_sku_codes: ["test-sku"],
+				order_user_id: user.id,
+			});
+			expect(create.response.status).toBe(201);
+
+			await upsertLuckinProducts(
+				env.DB,
+				[
+					{
+						productId: 33110,
+						productName: "生椰拿铁",
+						skuCode: "SP33110-00001",
+						estimatePrice: 19,
+					},
+				],
+				"拿铁",
+			);
+
+			const list = await post<{
+				code: number;
+				result: Array<{ productId: number; productName: string; skuCode: string }>;
+			}>("/order/catalog/list", {
+				id: create.body.result.id,
+				sign: "AbC123xYz9",
+			});
+
+			expect(list.response.status).toBe(200);
+			expect(list.body.result).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						productId: 33110,
+						productName: "生椰拿铁",
+						skuCode: "SP33110-00001",
+					}),
+				]),
+			);
+		});
+
+		it("syncs 美式 and 拿铁 products through mocked Luckin MCP and persists them", async () => {
+			const user = await createOrderUser({ token: "catalog-sync-token" });
+			const create = await post<{
+				success: boolean;
+				result: { id: string };
+			}>("/sellable-products/create", {
+				sellable_product_ids: ["test-product"],
+				sellable_sku_codes: ["test-sku"],
+				order_user_id: user.id,
+			});
+			expect(create.response.status).toBe(201);
+
+			const calls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
+			const fetcher: typeof fetch = async (input, init) => {
+				const request = new Request(input, init);
+				expect(request.headers.get("authorization")).toBe(
+					"Bearer catalog-sync-token",
+				);
+				const body = (await request.json()) as {
+					params: { name: string; arguments: Record<string, unknown> };
+				};
+				calls.push(body.params);
+				const query = body.params.arguments.query;
+
+				return Response.json({
+					jsonrpc: "2.0",
+					id: "searchProductForMcp",
+					result: {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify({
+									data:
+										query === "美式"
+											? [
+													{
+														productId: 22558,
+														productName: "标准美式",
+														skuCode: "SP22558-00001",
+														tags: ["美式"],
+													},
+												]
+											: [
+													{
+														productId: 33110,
+														productName: "生椰拿铁",
+														skuCode: "SP33110-00001",
+														tags: ["拿铁"],
+													},
+												],
+								}),
+							},
+						],
+					},
+				});
+			};
+
+			const synced = await syncLuckinCatalogForSellableProduct(env.DB, fetcher, {
+				id: create.body.result.id,
+				sign: "AbC123xYz9",
+				deptId: 245062453,
+				queries: ["美式", "拿铁"],
+			});
+
+			expect(calls).toEqual([
+				{
+					name: "searchProductForMcp",
+					arguments: { deptId: 245062453, query: "美式" },
+				},
+				{
+					name: "searchProductForMcp",
+					arguments: { deptId: 245062453, query: "拿铁" },
+				},
+			]);
+			expect(synced).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({ productId: 22558, skuCode: "SP22558-00001" }),
+					expect.objectContaining({ productId: 33110, skuCode: "SP33110-00001" }),
+				]),
+			);
+			await expect(listLuckinProducts(env.DB)).resolves.toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({ productId: 22558, skuCode: "SP22558-00001" }),
+					expect.objectContaining({ productId: 33110, skuCode: "SP33110-00001" }),
+				]),
+			);
+		});
+
+		it("repairs a sellable product row with real catalog product ids and sku codes", async () => {
+			const user = await createOrderUser({ token: "catalog-repair-token" });
+			const create = await post<{
+				success: boolean;
+				result: { id: string };
+			}>("/sellable-products/create", {
+				sellable_product_ids: ["test-product"],
+				sellable_sku_codes: ["test-sku"],
+				sellable_quantity: 2,
+				order_user_id: user.id,
+			});
+			expect(create.response.status).toBe(201);
+
+			await upsertLuckinProducts(
+				env.DB,
+				[
+					{
+						productId: 22558,
+						productName: "标准美式",
+						skuCode: "SP22558-00001",
+					},
+					{
+						productId: 33110,
+						productName: "生椰拿铁",
+						skuCode: "SP33110-00001",
+					},
+				],
+				"repair",
+			);
+
+			const repair = await post<{
+				code: number;
+				result: {
+					id: string;
+					sellable_product_ids: string[];
+					sellable_sku_codes: string[];
+					sellable_quantity: number;
+				};
+			}>("/order/catalog/repairSellable", {
+				id: create.body.result.id,
+				sign: "AbC123xYz9",
+			});
+
+			expect(repair.response.status).toBe(200);
+			expect(repair.body.result).toEqual(
+				expect.objectContaining({
+					id: create.body.result.id,
+					sellable_quantity: 2,
+				}),
+			);
+			expect(repair.body.result.sellable_product_ids).toHaveLength(2);
+			expect(repair.body.result.sellable_sku_codes).toHaveLength(2);
+			expect(repair.body.result.sellable_product_ids).not.toContain("test-product");
+			expect(repair.body.result.sellable_sku_codes).not.toContain("test-sku");
+			expect(
+				repair.body.result.sellable_product_ids.every((productId) =>
+					/^\d+$/.test(productId),
+				),
+			).toBe(true);
+			expect(
+				repair.body.result.sellable_sku_codes.every((skuCode) =>
+					skuCode.startsWith("SP"),
+				),
+			).toBe(true);
 		});
 	});
 });

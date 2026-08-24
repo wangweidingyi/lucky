@@ -11,6 +11,11 @@ import {
 	SearchProductForMcp,
 	SwitchProduct,
 } from "./luckinMcpRoutes";
+import {
+	CatalogList,
+	CatalogRepairSellable,
+	CatalogSync,
+} from "./catalog";
 
 export const orderRouter = fromHono(new Hono());
 
@@ -23,3 +28,6 @@ orderRouter.post("/previewOrder", PreviewOrder);
 orderRouter.post("/createOrder", CreateOrder);
 orderRouter.post("/queryOrderDetailInfo", QueryOrderDetailInfo);
 orderRouter.post("/cancelOrder", CancelOrder);
+orderRouter.post("/catalog/list", CatalogList);
+orderRouter.post("/catalog/sync", CatalogSync);
+orderRouter.post("/catalog/repairSellable", CatalogRepairSellable);

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { idSchema } from "./LuckyOrderUsers";
 
 const optionalNullableString = z.string().optional().nullable();
-export const sellableProductStatusSchema = z.enum(["waiting", "pending"]);
+export const sellableProductStatusSchema = z.enum(["waiting", "pending", "done"]);
 
 export const sellableProductRowSchema = z.object({
     id: idSchema,
@@ -99,4 +99,25 @@ export async function findActiveSellableProductByOrderId(
         .first<SellableProductDbRow>();
 
     return row ? deserializeSellableProduct(row) : null;
+}
+
+export async function replaceSellableProductCatalogRefs(
+    db: D1Database,
+    id: string,
+    products: Array<{ productId: number; skuCode: string }>,
+) {
+    await db
+        .prepare(
+            `UPDATE lucky_sellable_products
+             SET sellable_product_ids = ?, sellable_sku_codes = ?
+             WHERE id = ? AND is_delete = 0`,
+        )
+        .bind(
+            serializeArray(products.map((product) => String(product.productId))),
+            serializeArray(products.map((product) => product.skuCode)),
+            id,
+        )
+        .run();
+
+    return findActiveSellableProduct(db, id);
 }

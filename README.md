@@ -29,7 +29,7 @@ Stores product information that can be used for proxy ordering. Third-party fiel
 | `sellable_product_ids` | `TEXT` | JSON string array in D1, array in API responses |
 | `sellable_sku_codes` | `TEXT` | JSON string array in D1, array in API responses |
 | `sellable_quantity` | `INTEGER` | Defaults to `1` |
-| `status` | `TEXT` | `waiting` or `pending`, defaults to `waiting` |
+| `status` | `TEXT` | `waiting`, `pending`, or `done`, defaults to `waiting` |
 | `order_user_id` | `TEXT` | Active `lucky_order_users.id` |
 | `third_party_remark_id` | `TEXT` | Optional 3-character `a-zA-Z0-9` value |
 | `third_party_order_id` | `TEXT` | Optional third-party order id |

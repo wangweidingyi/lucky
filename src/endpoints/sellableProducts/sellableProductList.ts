@@ -12,7 +12,7 @@ type SellableProductDbRow = {
 	sellable_product_ids: string;
 	sellable_sku_codes: string;
 	sellable_quantity: number;
-	status: "waiting" | "pending";
+	status: "waiting" | "pending" | "done";
 	order_user_id: string;
 	third_party_remark_id: string | null;
 	third_party_order_id: string | null;

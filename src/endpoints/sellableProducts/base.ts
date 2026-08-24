@@ -2,7 +2,7 @@ import { z } from "zod";
 import { idSchema } from "../orderUsers/base";
 
 const optionalNullableString = z.string().optional().nullable();
-export const sellableProductStatusSchema = z.enum(["waiting", "pending"]);
+export const sellableProductStatusSchema = z.enum(["waiting", "pending", "done"]);
 
 export const sellableProductRowSchema = z.object({
 	id: idSchema,
