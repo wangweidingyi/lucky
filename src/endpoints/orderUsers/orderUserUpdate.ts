@@ -7,7 +7,23 @@ import {
 	orderUserUpdateBodySchema,
 } from "./base";
 
-const updateColumns = ["nickname", "token", "type", "status"] as const;
+const updateColumns = [
+	"nickname",
+	"token",
+	"type",
+	"status",
+	"auth_mode",
+	"uid",
+	"openid",
+	"black_box",
+	"notify_code",
+	"csid",
+	"pay_type",
+	"miniprogram_version",
+	"aes_key",
+	"base_url",
+	"cookie",
+] as const;
 
 export class OrderUserUpdate extends OpenAPIRoute {
 	schema = {

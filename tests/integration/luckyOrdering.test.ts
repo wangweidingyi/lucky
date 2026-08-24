@@ -1,10 +1,12 @@
 import { env, SELF } from "cloudflare:test";
+import CryptoJS from "crypto-js";
 import { describe, expect, it } from "vitest";
 import {
 	QueryShopListError,
 	queryShopListForSellableProduct,
 } from "../../src/controller/order/queryShopList";
 import { forwardLuckinMcpToolForSellableProduct } from "../../src/controller/order/luckinMcp";
+import { miniprogramCreateOrderForSellableProduct } from "../../src/controller/order/miniprogramCreateOrder";
 import {
 	listLuckinProducts,
 	upsertLuckinProducts,
@@ -12,6 +14,9 @@ import {
 import { syncLuckinCatalogForSellableProduct } from "../../src/controller/order/catalog";
 
 const idPattern = /^[a-zA-Z0-9]{10}$/;
+const miniprogramAesKey = "CJQjAc1hYieC4QYb";
+const miniprogramUid =
+	"f931e729-4279-4d30-bdc5-0254af362e551787569733931-2926637-efAmj7k25Su8lEAGHeSrLLDaF7WCSl67RQEGsHnOQYYh3CdepZU4TszMDkSxpjkO";
 
 async function post<T>(path: string, body: Record<string, unknown> = {}) {
 	const response = await SELF.fetch(`http://local.test${path}`, {
@@ -33,6 +38,51 @@ function parseJson<T>(text: string) {
 	} catch {
 		return {} as T;
 	}
+}
+
+function encryptedMiniprogramResponse(payload: Record<string, unknown>) {
+	return new Response(encryptMiniprogramPayload(payload), {
+		headers: { "Content-Type": "text/plain;charset=UTF-8" },
+	});
+}
+
+function encryptMiniprogramPayload(payload: Record<string, unknown>) {
+	return CryptoJS.AES.encrypt(
+		JSON.stringify(payload),
+		CryptoJS.enc.Utf8.parse(miniprogramAesKey),
+		{
+			mode: CryptoJS.mode.ECB,
+			padding: CryptoJS.pad.Pkcs7,
+		},
+	)
+		.toString()
+		.replace(/\+/g, "-")
+		.replace(/\//g, "_");
+}
+
+function decryptMiniprogramPayload(q: string) {
+	const decrypted = CryptoJS.AES.decrypt(
+		q.replace(/-/g, "+").replace(/_/g, "/"),
+		CryptoJS.enc.Utf8.parse(miniprogramAesKey),
+		{
+			mode: CryptoJS.mode.ECB,
+			padding: CryptoJS.pad.Pkcs7,
+		},
+	).toString(CryptoJS.enc.Utf8);
+
+	return JSON.parse(decrypted) as Record<string, unknown>;
+}
+
+function signMiniprogramParams(params: Record<string, string>, uid: string) {
+	const plain = Object.entries({ ...params, uid })
+		.filter(([key]) => key !== "sign")
+		.sort(([left], [right]) => left.localeCompare(right))
+		.map(([key, value]) => `${key}=${value}`)
+		.join(";");
+
+	return CryptoJS.MD5(`${plain}${miniprogramAesKey}`).words
+		.map((word) => Math.abs(word).toString())
+		.join("");
 }
 
 async function createOrderUser(overrides: Record<string, unknown> = {}) {
@@ -83,8 +133,71 @@ describe("Lucky ordering API", () => {
 				token: "token-001",
 				type: "lucky",
 				status: "enabled",
+				auth_mode: "token",
+				uid: null,
+				openid: null,
+				black_box: null,
+				notify_code: null,
+				csid: null,
+				pay_type: null,
+				miniprogram_version: null,
+				aes_key: null,
+				base_url: null,
+				cookie: null,
 				is_delete: 0,
 			});
+		});
+
+		it("stores miniprogram auth fields on order users", async () => {
+			const created = await createOrderUser({
+				auth_mode: "miniprogram",
+				uid: "uid-from-db",
+				openid: "openid-from-db",
+				black_box: "blackbox-from-db",
+				notify_code: "notify-from-db",
+				csid: "csid-from-db",
+				pay_type: "7",
+				miniprogram_version: "5587",
+				aes_key: "aes-key-from-db",
+				base_url: "https://example.test",
+				cookie: "uid=uid-from-db; other=1",
+			});
+
+			expect(created).toEqual(
+				expect.objectContaining({
+					auth_mode: "miniprogram",
+					uid: "uid-from-db",
+					openid: "openid-from-db",
+					black_box: "blackbox-from-db",
+					notify_code: "notify-from-db",
+					csid: "csid-from-db",
+					pay_type: "7",
+					miniprogram_version: "5587",
+					aes_key: "aes-key-from-db",
+					base_url: "https://example.test",
+					cookie: "uid=uid-from-db; other=1",
+				}),
+			);
+
+			const update = await post<{
+				success: boolean;
+				result: { id: string; uid: string; openid: string; black_box: null };
+			}>("/order-users/update", {
+				id: created.id,
+				uid: "uid-updated",
+				openid: "openid-updated",
+				black_box: null,
+			});
+
+			expect(update.response.status).toBe(200);
+			expect(update.body.result).toEqual(
+				expect.objectContaining({
+					id: created.id,
+					uid: "uid-updated",
+					openid: "openid-updated",
+					black_box: null,
+				}),
+			);
 		});
 
 		it("lists, reads, updates, and soft deletes users through POST bodies", async () => {
@@ -476,6 +589,733 @@ describe("Lucky ordering API", () => {
 				message: "Luckin MCP request failed",
 				status: 502,
 			});
+		});
+	});
+
+	describe("POST /order/miniprogramcreateOrder", () => {
+		it("previews with default coffee card selection before creating a zero-pay miniprogram order", async () => {
+			const user = await createOrderUser({
+				token: JSON.stringify({
+					uid: miniprogramUid,
+					openid: "openid-legacy-flow",
+				}),
+			});
+			const create = await post<{
+				success: boolean;
+				result: { id: string };
+			}>("/sellable-products/create", {
+				sellable_product_ids: ["11447"],
+				sellable_sku_codes: ["SP9636-00001"],
+				order_user_id: user.id,
+			});
+			expect(create.response.status).toBe(201);
+
+			const calls: Array<{
+				url: string;
+				body: Record<string, unknown>;
+				payload: Record<string, unknown>;
+			}> = [];
+			const fetcher: typeof fetch = async (input, init) => {
+				const request = new Request(input, init);
+				expect(request.headers.get("cookie")).toBe(`uid=${miniprogramUid}`);
+				expect(request.headers.get("accept")).toBe("*/*");
+				expect(request.headers.get("content-type")).toBe(
+					"application/x-www-form-urlencoded",
+				);
+				expect(request.headers.get("x-lk-akv")).toBe("lk-wxmp-v5.3.22");
+				expect(request.headers.get("x-lk-mid")).toBe("2926637");
+				expect(request.headers.get("accept-language")).toBe("zh-CN,zh;q=0.9");
+				expect(request.headers.get("sec-fetch-site")).toBe("cross-site");
+				const rawBody = new TextDecoder().decode(await request.arrayBuffer());
+				const params = new URLSearchParams(rawBody);
+				const body = Object.fromEntries(params.entries());
+				expect(body).toEqual(
+					expect.objectContaining({
+						cid: "230101",
+						dk: "1",
+						q: expect.stringMatching(/^[A-Za-z0-9_-]+={0,2}$/),
+						sign: expect.stringMatching(/^\d+$/),
+					}),
+				);
+				expect(body).not.toHaveProperty("uid");
+				expect(body.q).not.toContain("productId");
+				expect(body.sign).toBe(
+					signMiniprogramParams(
+						{
+							cid: String(body.cid),
+							dk: String(body.dk),
+							q: String(body.q),
+						},
+						miniprogramUid,
+					),
+				);
+				const payload = decryptMiniprogramPayload(String(body.q));
+				expect(payload).not.toHaveProperty("uid");
+				calls.push({ url: request.url, body, payload });
+
+				if (request.url.endsWith("/resource/core/v2/order/preview")) {
+					expect(payload.miniversion).toBe("5587");
+					expect(request.headers.get("x-lk-sid")).toBe("245062453");
+					expect(payload).toEqual(
+						expect.objectContaining({
+							shopAbTest: true,
+							cityId: 2,
+							deptId: 245062453,
+							couponCodeList: [],
+							isFirst: 1,
+							recommendDispatchCoupon: 1,
+							recommendCard: 1,
+							recommendLimitCoupon: 1,
+							useDiscountType: 2,
+							limitDiscountInfo: null,
+							productList: [
+								expect.objectContaining({
+									amount: 1,
+									checked: 1,
+									eatway: "both",
+									productId: 11447,
+									skuCode: "SP9636-00001",
+									processTypeDetailList: [],
+									cafeKuId: "",
+								}),
+							],
+						}),
+					);
+					expect(
+						(payload.productList as Array<Record<string, unknown>>)[0],
+					).not.toHaveProperty("couponNo");
+					return encryptedMiniprogramResponse({
+						code: 1,
+						msg: "success",
+						content: {
+							discountPrice: 0,
+							couponCodeList: [],
+							productDetailList: [
+								{
+									indexId: 1,
+									productId: 11447,
+									skuCode: "SP9636-00001",
+									amount: 1,
+									cafeKuId: "card-001",
+									couponNo: "coupon-card-001",
+									coffeeVoucherType: 1,
+									processTypeDetailList: [],
+									supportChangeProcessType: 0,
+								},
+							],
+						},
+					});
+				}
+
+				expect(request.url).toMatch(/\/resource\/core\/v1\/order\/create$/);
+				expect(payload.productList).toEqual([
+					expect.objectContaining({
+						productId: 11447,
+						skuCode: "SP9636-00001",
+						cafeKuId: "card-001",
+						couponNo: "coupon-card-001",
+						coffeeVoucherType: 1,
+					}),
+				]);
+				return encryptedMiniprogramResponse({
+					code: 1,
+					msg: "success",
+					content: {
+						orderIdStr: "7639308439653908490",
+					},
+				});
+			};
+
+			await expect(
+				miniprogramCreateOrderForSellableProduct(env.DB, fetcher, {
+					id: create.body.result.id,
+					sign: "AbC123xYz9",
+					deptId: 245062453,
+					longitude: 118.08891,
+					latitude: 24.479627,
+					couponCodeList: ["SHOULD_NOT_FORWARD_FOR_CARD_FLOW"],
+					productList: [
+						{
+							amount: 1,
+							productId: 11447,
+							skuCode: "SP9636-00001",
+						},
+					],
+					remark: "少冰",
+				}),
+			).resolves.toEqual({
+				preview: expect.objectContaining({ discountPrice: 0 }),
+				order: { orderIdStr: "7639308439653908490" },
+			});
+
+			expect(calls).toHaveLength(2);
+			expect(calls[0]).toEqual({
+				url: "https://capi.lkcoffee.com/resource/core/v2/order/preview",
+				body: expect.objectContaining({
+						cid: "230101",
+						dk: "1",
+					}),
+					payload: expect.objectContaining({
+						couponCodeList: [],
+						miniversion: "5587",
+					}),
+				});
+			expect(calls[0].payload).not.toHaveProperty("uid");
+			expect(calls[1]).toEqual({
+				url: "https://capi.lkcoffee.com/resource/core/v1/order/create",
+				body: expect.objectContaining({
+					cid: "230101",
+					dk: "1",
+					}),
+					payload: expect.objectContaining({
+						couponCodeList: [],
+						appVersion: 101,
+						dispatchDistance: "",
+						giftProductList: [],
+						joinPlan: [],
+						miniversion: "5587",
+						payCardSceneType: 1,
+						submit: 0,
+						submitOf600: 0,
+					}),
+				});
+			expect(calls[1].payload).not.toHaveProperty("uid");
+		});
+
+		it("uses coffee card details from preview priceList when creating the order", async () => {
+			const user = await createOrderUser({
+				token: JSON.stringify({
+					uid: miniprogramUid,
+					openid: "openid-price-list",
+				}),
+			});
+			const create = await post<{
+				success: boolean;
+				result: { id: string };
+			}>("/sellable-products/create", {
+				sellable_product_ids: ["5151"],
+				sellable_sku_codes: ["SP3571-00244"],
+				order_user_id: user.id,
+			});
+			expect(create.response.status).toBe(201);
+
+			let createPayload: Record<string, unknown> | undefined;
+			const fetcher: typeof fetch = async (input, init) => {
+				const request = new Request(input, init);
+				const rawBody = new TextDecoder().decode(await request.arrayBuffer());
+				const params = new URLSearchParams(rawBody);
+				const payload = decryptMiniprogramPayload(String(params.get("q")));
+
+				if (request.url.endsWith("/resource/core/v2/order/preview")) {
+					return encryptedMiniprogramResponse({
+						code: 1,
+						msg: "success",
+						content: {
+							discountPrice: 0,
+							couponCodeList: [],
+							priceList: [
+								{
+									indexId: 1,
+									productId: 5151,
+									skuCode: "SP3571-00244",
+									amount: 1,
+									cafeKuId: "7671267849822863369",
+									couponNo: "",
+									coffeeVoucherType: 1,
+									processTypeDetailList: [],
+									supportChangeProcessType: 0,
+								},
+							],
+						},
+					});
+				}
+
+				createPayload = payload;
+				return encryptedMiniprogramResponse({
+					code: 1,
+					msg: "success",
+					content: {
+						orderIdStr: "7639308439653908490",
+						forwardPage: "detail",
+					},
+				});
+			};
+
+			await miniprogramCreateOrderForSellableProduct(env.DB, fetcher, {
+				id: create.body.result.id,
+				sign: "AbC123xYz9",
+				deptId: 613299,
+				longitude: 121.36506825616252,
+				latitude: 31.17089985836377,
+				productList: [
+					{
+						amount: 1,
+						productId: 5151,
+						skuCode: "SP3571-00244",
+					},
+				],
+			});
+
+			expect(createPayload?.productList).toEqual([
+				expect.objectContaining({
+					indexId: 1,
+					productId: 5151,
+					skuCode: "SP3571-00244",
+					amount: 1,
+					cafeKuId: "7671267849822863369",
+					couponNo: "",
+					coffeeVoucherType: 1,
+					processTypeDetailList: [],
+					supportChangeProcessType: 0,
+				}),
+			]);
+		});
+
+		it("continues with topay when create returns pay and completes a zero-pay order", async () => {
+			const user = await createOrderUser({
+				token: JSON.stringify({
+					uid: miniprogramUid,
+					openid: "openid-001",
+					blackBox: "blackbox-001",
+					notifyCode: "notify-code-001",
+					csid: "csid-001",
+				}),
+			});
+			const create = await post<{
+				success: boolean;
+				result: { id: string };
+			}>("/sellable-products/create", {
+				sellable_product_ids: ["5151"],
+				sellable_sku_codes: ["SP3571-00244"],
+				order_user_id: user.id,
+			});
+			expect(create.response.status).toBe(201);
+
+			const calls: Array<{ url: string; payload: Record<string, unknown> }> = [];
+			const fetcher: typeof fetch = async (input, init) => {
+				const request = new Request(input, init);
+				const rawBody = new TextDecoder().decode(await request.arrayBuffer());
+				const params = new URLSearchParams(rawBody);
+				const payload = decryptMiniprogramPayload(String(params.get("q")));
+				calls.push({ url: request.url, payload });
+
+				if (request.url.endsWith("/resource/core/v2/order/preview")) {
+					return encryptedMiniprogramResponse({
+						code: 1,
+						msg: "success",
+						content: {
+							discountPrice: 0,
+							priceList: [
+								{
+									indexId: 1,
+									productId: 5151,
+									skuCode: "SP3571-00244",
+									amount: 1,
+									cafeKuId: "card-001",
+									couponNo: "",
+									coffeeVoucherType: 1,
+								},
+							],
+						},
+					});
+				}
+
+				if (request.url.endsWith("/resource/core/v1/order/create")) {
+					return encryptedMiniprogramResponse({
+						code: 1,
+						msg: "success",
+						content: {
+							orderId: "7639308439653908490",
+							orderChild: "2",
+							forwardPage: "pay",
+						},
+					});
+				}
+
+				expect(request.url).toMatch(/\/resource\/core\/v2\/pay\/topay$/);
+				expect(request.headers.get("x-lk-sid")).toBe("613299");
+				expect(request.headers.get("x-lk-csid")).toBe("csid-001");
+				expect(payload).toEqual(
+					expect.objectContaining({
+						blackBox: "blackbox-001",
+						longitude: 121.36506825616252,
+						latitude: 31.17089985836377,
+						payType: "7",
+						busType: 0,
+						openid: "openid-001",
+						notifyCode: "notify-code-001",
+						orderId: "7639308439653908490",
+						miniversion: "5587",
+					}),
+				);
+				expect(payload).not.toHaveProperty("deptId");
+
+				return encryptedMiniprogramResponse({
+					code: 1,
+					msg: "success",
+					content: {
+						payStatus: 1,
+						needPay: false,
+						desc: "SUCCESS",
+					},
+				});
+			};
+
+			await expect(
+				miniprogramCreateOrderForSellableProduct(env.DB, fetcher, {
+					id: create.body.result.id,
+					sign: "AbC123xYz9",
+					deptId: 613299,
+					longitude: 121.36506825616252,
+					latitude: 31.17089985836377,
+					productList: [
+						{
+							amount: 1,
+							productId: 5151,
+							skuCode: "SP3571-00244",
+						},
+					],
+				}),
+			).resolves.toEqual({
+				preview: expect.objectContaining({ discountPrice: 0 }),
+				order: expect.objectContaining({
+					orderId: "7639308439653908490",
+					forwardPage: "pay",
+				}),
+				pay: expect.objectContaining({
+					needPay: false,
+					payStatus: 1,
+				}),
+			});
+			expect(calls.map((call) => call.url)).toEqual([
+				"https://capi.lkcoffee.com/resource/core/v2/order/preview",
+				"https://capi.lkcoffee.com/resource/core/v1/order/create",
+				"https://capi.lkcoffee.com/resource/core/v2/pay/topay",
+			]);
+		});
+
+		it("uses miniprogram auth fields from lucky_order_users instead of the legacy token", async () => {
+			const user = await createOrderUser({
+				token: "legacy-mcp-token-stays-for-old-flow",
+				auth_mode: "miniprogram",
+				uid: miniprogramUid,
+				openid: "openid-from-user-row",
+				black_box: "blackbox-from-user-row",
+				notify_code: "notify-from-user-row",
+				csid: "csid-from-user-row",
+				pay_type: "7",
+				miniprogram_version: "5587",
+			});
+			const create = await post<{
+				success: boolean;
+				result: { id: string };
+			}>("/sellable-products/create", {
+				sellable_product_ids: ["5151"],
+				sellable_sku_codes: ["SP3571-00244"],
+				order_user_id: user.id,
+			});
+			expect(create.response.status).toBe(201);
+
+			const calls: Array<{
+				url: string;
+				headers: Headers;
+				body: Record<string, string>;
+				payload: Record<string, unknown>;
+			}> = [];
+			const fetcher: typeof fetch = async (input, init) => {
+				const request = new Request(input, init);
+				const rawBody = new TextDecoder().decode(await request.arrayBuffer());
+				const params = new URLSearchParams(rawBody);
+				const body = Object.fromEntries(params.entries());
+				const payload = decryptMiniprogramPayload(String(params.get("q")));
+				calls.push({ url: request.url, headers: request.headers, body, payload });
+
+				if (request.url.endsWith("/resource/core/v2/order/preview")) {
+					expect(request.headers.get("cookie")).toBe(`uid=${miniprogramUid}`);
+					expect(request.headers.get("x-lk-csid")).toBe("csid-from-user-row");
+					expect(body.sign).toBe(
+						signMiniprogramParams(
+							{
+								cid: String(body.cid),
+								dk: String(body.dk),
+								q: String(body.q),
+							},
+							miniprogramUid,
+						),
+					);
+
+					return encryptedMiniprogramResponse({
+						code: 1,
+						msg: "success",
+						content: {
+							discountPrice: 0,
+							priceList: [
+								{
+									indexId: 1,
+									productId: 5151,
+									skuCode: "SP3571-00244",
+									amount: 1,
+									cafeKuId: "card-from-preview",
+									coffeeVoucherType: 1,
+								},
+							],
+						},
+					});
+				}
+
+				if (request.url.endsWith("/resource/core/v1/order/create")) {
+					return encryptedMiniprogramResponse({
+						code: 1,
+						msg: "success",
+						content: {
+							orderId: "7639308439653908493",
+							forwardPage: "pay",
+						},
+					});
+				}
+
+				expect(request.url).toMatch(/\/resource\/core\/v2\/pay\/topay$/);
+				expect(request.headers.get("x-lk-csid")).toBe("csid-from-user-row");
+				expect(payload).toEqual(
+					expect.objectContaining({
+						blackBox: "blackbox-from-user-row",
+						openid: "openid-from-user-row",
+						notifyCode: "notify-from-user-row",
+						payType: "7",
+						miniversion: "5587",
+					}),
+				);
+
+				return encryptedMiniprogramResponse({
+					code: 1,
+					msg: "success",
+					content: {
+						payStatus: 0,
+						needPay: false,
+					},
+				});
+			};
+
+			await expect(
+				miniprogramCreateOrderForSellableProduct(env.DB, fetcher, {
+					id: create.body.result.id,
+					sign: "AbC123xYz9",
+					deptId: 613299,
+					longitude: 121.36506825616252,
+					latitude: 31.17089985836377,
+					productList: [
+						{
+							amount: 1,
+							productId: 5151,
+							skuCode: "SP3571-00244",
+						},
+					],
+				}),
+			).resolves.toEqual({
+				preview: expect.objectContaining({ discountPrice: 0 }),
+				order: expect.objectContaining({
+					orderId: "7639308439653908493",
+					forwardPage: "pay",
+				}),
+				pay: expect.objectContaining({
+					needPay: false,
+					payStatus: 0,
+				}),
+			});
+
+			expect(calls.map((call) => call.url)).toEqual([
+				"https://capi.lkcoffee.com/resource/core/v2/order/preview",
+				"https://capi.lkcoffee.com/resource/core/v1/order/create",
+				"https://capi.lkcoffee.com/resource/core/v2/pay/topay",
+			]);
+		});
+
+		it("does not mark the miniprogram order complete when topay still needs payment", async () => {
+			const user = await createOrderUser({
+				token: JSON.stringify({
+					uid: miniprogramUid,
+					openid: "openid-002",
+				}),
+			});
+			const create = await post<{
+				success: boolean;
+				result: { id: string };
+			}>("/sellable-products/create", {
+				sellable_product_ids: ["5151"],
+				sellable_sku_codes: ["SP3571-00244"],
+				order_user_id: user.id,
+			});
+			expect(create.response.status).toBe(201);
+
+			const fetcher: typeof fetch = async (input, init) => {
+				const request = new Request(input, init);
+
+				if (request.url.endsWith("/resource/core/v2/order/preview")) {
+					return encryptedMiniprogramResponse({
+						code: 1,
+						msg: "success",
+						content: {
+							discountPrice: 0,
+							priceList: [
+								{
+									indexId: 1,
+									productId: 5151,
+									skuCode: "SP3571-00244",
+									amount: 1,
+									cafeKuId: "card-001",
+									coffeeVoucherType: 1,
+								},
+							],
+						},
+					});
+				}
+
+				if (request.url.endsWith("/resource/core/v1/order/create")) {
+					return encryptedMiniprogramResponse({
+						code: 1,
+						msg: "success",
+						content: {
+							orderId: "7639308439653908491",
+							forwardPage: "pay",
+						},
+					});
+				}
+
+				return encryptedMiniprogramResponse({
+					code: 1,
+					msg: "success",
+					content: {
+						payStatus: 1,
+						needPay: true,
+						payParams: { nonceStr: "nonce" },
+					},
+				});
+			};
+
+			await expect(
+				miniprogramCreateOrderForSellableProduct(env.DB, fetcher, {
+					id: create.body.result.id,
+					sign: "AbC123xYz9",
+					deptId: 613299,
+					longitude: 121.36506825616252,
+					latitude: 31.17089985836377,
+					productList: [
+						{
+							amount: 1,
+							productId: 5151,
+							skuCode: "SP3571-00244",
+						},
+					],
+				}),
+			).rejects.toMatchObject({
+				message: "Luckin miniprogram order still requires payment",
+				status: 409,
+			});
+		});
+
+		it("uses captured miniprogram pay defaults for a legacy token", async () => {
+			const user = await createOrderUser({
+				token: "legacy-mcp-token",
+			});
+			const create = await post<{
+				success: boolean;
+				result: { id: string };
+			}>("/sellable-products/create", {
+				sellable_product_ids: ["5151"],
+				sellable_sku_codes: ["SP3571-00244"],
+				order_user_id: user.id,
+			});
+			expect(create.response.status).toBe(201);
+
+			const calls: Array<{ url: string; payload: Record<string, unknown> }> = [];
+			const fetcher: typeof fetch = async (input, init) => {
+				const request = new Request(input, init);
+				const rawBody = new TextDecoder().decode(await request.arrayBuffer());
+				const params = new URLSearchParams(rawBody);
+				const payload = decryptMiniprogramPayload(String(params.get("q")));
+				calls.push({ url: request.url, payload });
+
+				if (request.url.endsWith("/resource/core/v2/order/preview")) {
+					return encryptedMiniprogramResponse({
+						code: 1,
+						msg: "success",
+						content: {
+							discountPrice: 0,
+							priceList: [
+								{
+									indexId: 1,
+									productId: 5151,
+									skuCode: "SP3571-00244",
+									amount: 1,
+									cafeKuId: "card-001",
+									coffeeVoucherType: 1,
+								},
+							],
+						},
+					});
+				}
+
+				if (request.url.endsWith("/resource/core/v1/order/create")) {
+					return encryptedMiniprogramResponse({
+						code: 1,
+						msg: "success",
+						content: {
+							orderId: "7639308439653908492",
+							forwardPage: "pay",
+						},
+					});
+				}
+
+				return encryptedMiniprogramResponse({
+					code: 1,
+					msg: "success",
+					content: {
+						payStatus: 0,
+						needPay: false,
+					},
+				});
+			};
+
+			await expect(
+				miniprogramCreateOrderForSellableProduct(env.DB, fetcher, {
+					id: create.body.result.id,
+					sign: "AbC123xYz9",
+					deptId: 613299,
+					longitude: 121.36506825616252,
+					latitude: 31.17089985836377,
+					productList: [
+						{
+							amount: 1,
+							productId: 5151,
+							skuCode: "SP3571-00244",
+						},
+						],
+					}),
+			).resolves.toEqual({
+				preview: expect.objectContaining({ discountPrice: 0 }),
+				order: expect.objectContaining({
+					orderId: "7639308439653908492",
+					forwardPage: "pay",
+				}),
+				pay: expect.objectContaining({
+					needPay: false,
+					payStatus: 0,
+				}),
+			});
+			expect(calls.map((call) => call.url)).toEqual([
+				"https://capi.lkcoffee.com/resource/core/v2/order/preview",
+				"https://capi.lkcoffee.com/resource/core/v1/order/create",
+				"https://capi.lkcoffee.com/resource/core/v2/pay/topay",
+			]);
+			expect(calls[2].payload).toEqual(
+				expect.objectContaining({
+					blackBox: "jMPHN1787540409vyeJR3fMRi7",
+					openid: "ovKu05ATRnvyp7wnI1Sew-MP2U5I",
+					payType: "7",
+					notifyCode: "c1.x4g9FHsA0q9qpK_2cw9j_IqsLMDHSHbvkZoZ0UntOnw",
+					miniversion: "5587",
+				}),
+			);
 		});
 	});
 

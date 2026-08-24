@@ -16,6 +16,7 @@ import {
 	CatalogRepairSellable,
 	CatalogSync,
 } from "./catalog";
+import { MiniprogramCreateOrder } from "./miniprogramCreateOrder";
 
 export const orderRouter = fromHono(new Hono());
 
@@ -26,6 +27,7 @@ orderRouter.post("/switchProduct", SwitchProduct);
 orderRouter.post("/queryProductDetailInfo", QueryProductDetailInfo);
 orderRouter.post("/previewOrder", PreviewOrder);
 orderRouter.post("/createOrder", CreateOrder);
+orderRouter.post("/miniprogramcreateOrder", MiniprogramCreateOrder);
 orderRouter.post("/queryOrderDetailInfo", QueryOrderDetailInfo);
 orderRouter.post("/cancelOrder", CancelOrder);
 orderRouter.post("/catalog/list", CatalogList);
