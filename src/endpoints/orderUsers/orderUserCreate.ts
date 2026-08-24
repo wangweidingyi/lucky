@@ -30,25 +30,8 @@ export class OrderUserCreate extends OpenAPIRoute {
 		const id = generateId();
 
 		await c.env.DB.prepare(
-			`INSERT INTO lucky_order_users (
-				id,
-				nickname,
-				token,
-				type,
-				status,
-				auth_mode,
-				uid,
-				openid,
-				black_box,
-				notify_code,
-				csid,
-				pay_type,
-				miniprogram_version,
-				aes_key,
-				base_url,
-				cookie
-			)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO lucky_order_users (id, nickname, token, type, status)
+			 VALUES (?, ?, ?, ?, ?)`,
 		)
 			.bind(
 				id,
@@ -56,17 +39,6 @@ export class OrderUserCreate extends OpenAPIRoute {
 				data.body.token,
 				data.body.type,
 				data.body.status,
-				data.body.auth_mode,
-				data.body.uid,
-				data.body.openid,
-				data.body.black_box,
-				data.body.notify_code,
-				data.body.csid,
-				data.body.pay_type,
-				data.body.miniprogram_version,
-				data.body.aes_key,
-				data.body.base_url,
-				data.body.cookie,
 			)
 			.run();
 
