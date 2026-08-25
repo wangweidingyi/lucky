@@ -39,7 +39,7 @@ class XiaDan extends OpenAPIRoute {
 		}
 
 		await c.env.DB.prepare(
-			"UPDATE lucky_sellable_products SET status = 'pending' WHERE id = ? AND is_delete = 0",
+			"UPDATE lucky_sellable_products SET status = 'pending' WHERE id = ? AND is_delete = 0 AND status = 'waiting'",
 		)
 			.bind(existing.id)
 			.run();

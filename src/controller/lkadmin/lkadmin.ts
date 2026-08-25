@@ -22,6 +22,19 @@ import {
 	orderUserRowSchema,
 	orderUserUpdateBodySchema,
 } from "../../models/LuckyOrderUsers";
+import {
+	deserializeCoffeeCard,
+	listCoffeeCards,
+} from "../../models/luckyCoffeeCards";
+import {
+	CoffeeCardSyncError,
+	previewCoffeeCardProductsBodySchema,
+	previewLuckinCoffeeCardProducts,
+	syncCoffeeCardProductsBodySchema,
+	syncCoffeeCardsBodySchema,
+	syncLuckinCoffeeCardProducts,
+	syncLuckinCoffeeCards,
+} from "./couponSync";
 
 const adminToken = "lkadmin-dev-token";
 
@@ -51,6 +64,10 @@ const adminSellableProductUpdateBodySchema = orderUserIdBodySchema.extend({
 });
 
 const productIdBodySchema = z.object({
+	id: z.number().int().positive(),
+});
+
+const coffeeCardIdBodySchema = z.object({
 	id: z.number().int().positive(),
 });
 
@@ -92,7 +109,32 @@ const adminProductUpdateBodySchema = productIdBodySchema.extend({
 	sourceQuery: z.string().optional().nullable(),
 });
 
+const adminCoffeeCardCreateBodySchema = z.object({
+	orderUserId: idSchema,
+	cafeKuId: z.string().min(1),
+	couponNo: z.string().optional().nullable(),
+	coffeeVoucherType: z.number().int().optional().default(0),
+	cardName: z.string().optional().nullable(),
+	usableQuantity: z.number().int().nonnegative().optional().default(1),
+	syncedProductCount: z.number().int().nonnegative().optional().default(0),
+	generatedSellableCount: z.number().int().nonnegative().optional().default(0),
+	raw: z.record(jsonValueSchema).optional().default({}),
+});
+
+const adminCoffeeCardUpdateBodySchema = coffeeCardIdBodySchema.extend({
+	orderUserId: idSchema.optional(),
+	cafeKuId: z.string().min(1).optional(),
+	couponNo: z.string().optional().nullable(),
+	coffeeVoucherType: z.number().int().optional(),
+	cardName: z.string().optional().nullable(),
+	usableQuantity: z.number().int().nonnegative().optional(),
+	syncedProductCount: z.number().int().nonnegative().optional(),
+	generatedSellableCount: z.number().int().nonnegative().optional(),
+	raw: z.record(jsonValueSchema).optional(),
+});
+
 type ProductDbRow = Parameters<typeof deserializeLuckinProduct>[0];
+type CoffeeCardDbRow = Parameters<typeof deserializeCoffeeCard>[0];
 
 function validationError(c: AppContext, error: z.ZodError) {
 	return c.json(
@@ -197,6 +239,23 @@ async function getProduct(db: D1Database, id: number, includeDeleted = false) {
 		.first<ProductDbRow>();
 
 	return row ? deserializeLuckinProduct(row) : null;
+}
+
+async function getCoffeeCard(
+	db: D1Database,
+	id: number,
+	includeDeleted = false,
+) {
+	const row = await db
+		.prepare(
+			`SELECT *
+			 FROM lucky_coffee_cards
+			 WHERE id = ? ${includeDeleted ? "" : "AND is_delete = 0"}`,
+		)
+		.bind(id)
+		.first<CoffeeCardDbRow>();
+
+	return row ? deserializeCoffeeCard(row) : null;
 }
 
 lkadminRouter.post("/login", async (c: AppContext) => {
@@ -625,4 +684,183 @@ lkadminRouter.post("/products/delete", async (c: AppContext) => {
 		.run();
 
 	return ok(c, await getProduct(c.env.DB, body.id, true));
+});
+
+lkadminRouter.post("/coffee-cards/list", async (c: AppContext) => {
+	const body = await parseBody(
+		c,
+		z.object({ order_user_id: idSchema.optional() }),
+	);
+	if (isResponse(body)) {
+		return body;
+	}
+
+	return ok(c, await listCoffeeCards(c.env.DB, body.order_user_id));
+});
+
+lkadminRouter.post("/coffee-cards/create", async (c: AppContext) => {
+	const body = await parseBody(c, adminCoffeeCardCreateBodySchema);
+	if (isResponse(body)) {
+		return body;
+	}
+
+	const orderUser = await findActiveOrderUser(c.env.DB, body.orderUserId);
+	if (!orderUser) {
+		return fail(c, "orderUserId does not reference an active order user", 400);
+	}
+
+	const result = await c.env.DB.prepare(
+		`INSERT INTO lucky_coffee_cards (
+			order_user_id,
+			cafe_ku_id,
+			coupon_no,
+			coffee_voucher_type,
+			card_name,
+			usable_quantity,
+			synced_product_count,
+			generated_sellable_count,
+			last_synced_at,
+			raw,
+			is_delete
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 0)`,
+	)
+		.bind(
+			body.orderUserId,
+			body.cafeKuId,
+			body.couponNo ?? null,
+			body.coffeeVoucherType,
+			body.cardName ?? null,
+			body.usableQuantity,
+			body.syncedProductCount,
+			body.generatedSellableCount,
+			JSON.stringify(body.raw),
+		)
+		.run();
+
+	return ok(c, await getCoffeeCard(c.env.DB, Number(result.meta.last_row_id)), 201);
+});
+
+lkadminRouter.post("/coffee-cards/read", async (c: AppContext) => {
+	const body = await parseBody(c, coffeeCardIdBodySchema);
+	if (isResponse(body)) {
+		return body;
+	}
+
+	const row = await getCoffeeCard(c.env.DB, body.id);
+	return row ? ok(c, row) : fail(c, "Not Found", 404);
+});
+
+lkadminRouter.post("/coffee-cards/update", async (c: AppContext) => {
+	const body = await parseBody(c, adminCoffeeCardUpdateBodySchema);
+	if (isResponse(body)) {
+		return body;
+	}
+
+	const existing = await getCoffeeCard(c.env.DB, body.id);
+	if (!existing) {
+		return fail(c, "Not Found", 404);
+	}
+
+	if (body.orderUserId) {
+		const orderUser = await findActiveOrderUser(c.env.DB, body.orderUserId);
+		if (!orderUser) {
+			return fail(c, "orderUserId does not reference an active order user", 400);
+		}
+	}
+
+	const { assignments, values } = setClauseFromBody(body, {
+		orderUserId: "order_user_id",
+		cafeKuId: "cafe_ku_id",
+		couponNo: "coupon_no",
+		coffeeVoucherType: "coffee_voucher_type",
+		cardName: "card_name",
+		usableQuantity: "usable_quantity",
+		syncedProductCount: "synced_product_count",
+		generatedSellableCount: "generated_sellable_count",
+		raw: (value) => JSON.stringify(value),
+	});
+
+	if (assignments.length > 0) {
+		await c.env.DB.prepare(
+			`UPDATE lucky_coffee_cards
+			 SET ${assignments.join(", ")}, last_synced_at = CURRENT_TIMESTAMP
+			 WHERE id = ? AND is_delete = 0`,
+		)
+			.bind(...values, body.id)
+			.run();
+	}
+
+	return ok(c, await getCoffeeCard(c.env.DB, body.id));
+});
+
+lkadminRouter.post("/coffee-cards/delete", async (c: AppContext) => {
+	const body = await parseBody(c, coffeeCardIdBodySchema);
+	if (isResponse(body)) {
+		return body;
+	}
+
+	const existing = await getCoffeeCard(c.env.DB, body.id);
+	if (!existing) {
+		return fail(c, "Not Found", 404);
+	}
+
+	await c.env.DB.prepare(
+		"UPDATE lucky_coffee_cards SET is_delete = 1 WHERE id = ? AND is_delete = 0",
+	)
+		.bind(body.id)
+		.run();
+
+	return ok(c, await getCoffeeCard(c.env.DB, body.id, true));
+});
+
+lkadminRouter.post("/coffee-cards/sync", async (c: AppContext) => {
+	const body = await parseBody(c, syncCoffeeCardsBodySchema);
+	if (isResponse(body)) {
+		return body;
+	}
+
+	try {
+		return ok(c, await syncLuckinCoffeeCards(c.env.DB, fetch, body));
+	} catch (error) {
+		if (error instanceof CoffeeCardSyncError) {
+			return fail(c, error.message, error.status);
+		}
+
+		throw error;
+	}
+});
+
+lkadminRouter.post("/coffee-cards/sync-products", async (c: AppContext) => {
+	const body = await parseBody(c, syncCoffeeCardProductsBodySchema);
+	if (isResponse(body)) {
+		return body;
+	}
+
+	try {
+		return ok(c, await syncLuckinCoffeeCardProducts(c.env.DB, fetch, body));
+	} catch (error) {
+		if (error instanceof CoffeeCardSyncError) {
+			return fail(c, error.message, error.status);
+		}
+
+		throw error;
+	}
+});
+
+lkadminRouter.post("/coffee-cards/preview-products", async (c: AppContext) => {
+	const body = await parseBody(c, previewCoffeeCardProductsBodySchema);
+	if (isResponse(body)) {
+		return body;
+	}
+
+	try {
+		return ok(c, await previewLuckinCoffeeCardProducts(c.env.DB, fetch, body));
+	} catch (error) {
+		if (error instanceof CoffeeCardSyncError) {
+			return fail(c, error.message, error.status);
+		}
+
+		throw error;
+	}
 });

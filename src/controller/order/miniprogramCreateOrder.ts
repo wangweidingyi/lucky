@@ -7,6 +7,7 @@ import {
 } from "../../models/LuckyOrderUsers";
 import {
 	findActiveSellableProduct,
+	markSellableProductDone,
 	sellableProductIdBodySchema,
 } from "../../models/luckySellableProducts";
 import { fail, ok } from "../../shared/responses";
@@ -138,6 +139,10 @@ export async function miniprogramCreateOrderForSellableProduct(
 		throw new MiniprogramOrderError("Not Found", 404);
 	}
 
+	if (sellableProduct.status !== "pending") {
+		throw new MiniprogramOrderError("Sellable product is not pending", 409);
+	}
+
 	const orderUser = await findActiveOrderUser(db, sellableProduct.order_user_id);
 
 	if (!orderUser) {
@@ -171,6 +176,7 @@ export async function miniprogramCreateOrderForSellableProduct(
 	logMiniprogram("create:result", summarizeCreateResult(order));
 
 	const pay = await completeMiniprogramPayIfNeeded(fetcher, input, auth, order);
+	await markSellableProductDone(db, sellableProduct.id, getOrderId(order) || null);
 
 	return pay ? { preview, order, pay } : { preview, order };
 }

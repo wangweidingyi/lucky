@@ -489,6 +489,41 @@ describe("Lucky ordering API", () => {
 			expect(readAfter.response.status).toBe(200);
 			expect(readAfter.body.result.status).toBe("pending");
 		});
+
+		it("does not reopen an already done sellable product", async () => {
+			const user = await createOrderUser();
+			const create = await post<{
+				success: boolean;
+				result: { id: string; status: string };
+			}>("/sellable-products/create", {
+				sellable_product_ids: ["prod-xy-002"],
+				sellable_sku_codes: ["sku-xy-002"],
+				order_user_id: user.id,
+				status: "done",
+				third_party_order_id: "xy-order-002",
+			});
+			expect(create.response.status).toBe(201);
+
+			const xiadan = await post<{
+				code?: number;
+				success?: boolean;
+				result: { id: string; status: string };
+			}>("/xy/order/xiadan", { orderId: "xy-order-002" });
+			expect(xiadan.response.status).toBe(200);
+			expect(xiadan.body.result).toEqual(
+				expect.objectContaining({
+					id: create.body.result.id,
+					status: "done",
+				}),
+			);
+
+			const readAfter = await post<{
+				success: boolean;
+				result: { id: string; status: string };
+			}>("/sellable-products/read", { id: create.body.result.id });
+			expect(readAfter.response.status).toBe(200);
+			expect(readAfter.body.result.status).toBe("done");
+		});
 	});
 
 	describe("POST /order/queryShopList", () => {
@@ -625,6 +660,7 @@ describe("Lucky ordering API", () => {
 				sellable_product_ids: ["11447"],
 				sellable_sku_codes: ["SP9636-00001"],
 				order_user_id: user.id,
+				status: "pending",
 			});
 			expect(create.response.status).toBe(201);
 
@@ -798,6 +834,118 @@ describe("Lucky ordering API", () => {
 					}),
 				});
 			expect(calls[1].payload).not.toHaveProperty("uid");
+
+			const sellableAfterOrder = await post<{
+				success: boolean;
+				result: { status: string; third_party_order_id: string };
+			}>("/sellable-products/read", { id: create.body.result.id });
+			expect(sellableAfterOrder.response.status).toBe(200);
+			expect(sellableAfterOrder.body.result).toEqual(
+				expect.objectContaining({
+					status: "done",
+					third_party_order_id: "7639308439653908490",
+				}),
+			);
+		});
+
+		it("rejects creating a waiting sellable product without calling Luckin", async () => {
+			const user = await createOrderUser({
+				token: JSON.stringify({
+					uid: miniprogramUid,
+					openid: "openid-waiting-flow",
+				}),
+			});
+			const create = await post<{
+				success: boolean;
+				result: { id: string };
+			}>("/sellable-products/create", {
+				sellable_product_ids: ["11447"],
+				sellable_sku_codes: ["SP9636-00001"],
+				order_user_id: user.id,
+			});
+			expect(create.response.status).toBe(201);
+
+			let calledLuckin = false;
+			const fetcher: typeof fetch = async () => {
+				calledLuckin = true;
+				return encryptedMiniprogramResponse({
+					code: 1,
+					msg: "success",
+					content: {},
+				});
+			};
+
+			await expect(
+				miniprogramCreateOrderForSellableProduct(env.DB, fetcher, {
+					id: create.body.result.id,
+					sign: "AbC123xYz9",
+					deptId: 245062453,
+					longitude: 118.08891,
+					latitude: 24.479627,
+					productList: [
+						{
+							amount: 1,
+							productId: 11447,
+							skuCode: "SP9636-00001",
+						},
+					],
+				}),
+			).rejects.toMatchObject({
+				message: "Sellable product is not pending",
+				status: 409,
+			});
+			expect(calledLuckin).toBe(false);
+		});
+
+		it("rejects creating an already done sellable product without calling Luckin", async () => {
+			const user = await createOrderUser({
+				token: JSON.stringify({
+					uid: miniprogramUid,
+					openid: "openid-done-flow",
+				}),
+			});
+			const create = await post<{
+				success: boolean;
+				result: { id: string };
+			}>("/sellable-products/create", {
+				sellable_product_ids: ["11447"],
+				sellable_sku_codes: ["SP9636-00001"],
+				order_user_id: user.id,
+				status: "done",
+				third_party_order_id: "7639308439653908490",
+			});
+			expect(create.response.status).toBe(201);
+
+			let calledLuckin = false;
+			const fetcher: typeof fetch = async () => {
+				calledLuckin = true;
+				return encryptedMiniprogramResponse({
+					code: 1,
+					msg: "success",
+					content: {},
+				});
+			};
+
+			await expect(
+				miniprogramCreateOrderForSellableProduct(env.DB, fetcher, {
+					id: create.body.result.id,
+					sign: "AbC123xYz9",
+					deptId: 245062453,
+					longitude: 118.08891,
+					latitude: 24.479627,
+					productList: [
+						{
+							amount: 1,
+							productId: 11447,
+							skuCode: "SP9636-00001",
+						},
+					],
+				}),
+			).rejects.toMatchObject({
+				message: "Sellable product is not pending",
+				status: 409,
+			});
+			expect(calledLuckin).toBe(false);
 		});
 
 		it("uses coffee card details from preview priceList when creating the order", async () => {
@@ -814,6 +962,7 @@ describe("Lucky ordering API", () => {
 				sellable_product_ids: ["5151"],
 				sellable_sku_codes: ["SP3571-00244"],
 				order_user_id: user.id,
+				status: "pending",
 			});
 			expect(create.response.status).toBe(201);
 
@@ -906,6 +1055,7 @@ describe("Lucky ordering API", () => {
 				sellable_product_ids: ["5151"],
 				sellable_sku_codes: ["SP3571-00244"],
 				order_user_id: user.id,
+				status: "pending",
 			});
 			expect(create.response.status).toBe(201);
 
@@ -1031,6 +1181,7 @@ describe("Lucky ordering API", () => {
 				sellable_product_ids: ["5151"],
 				sellable_sku_codes: ["SP3571-00244"],
 				order_user_id: user.id,
+				status: "pending",
 			});
 			expect(create.response.status).toBe(201);
 
@@ -1162,6 +1313,7 @@ describe("Lucky ordering API", () => {
 				sellable_product_ids: ["5151"],
 				sellable_sku_codes: ["SP3571-00244"],
 				order_user_id: user.id,
+				status: "pending",
 			});
 			expect(create.response.status).toBe(201);
 
@@ -1229,6 +1381,18 @@ describe("Lucky ordering API", () => {
 				message: "Luckin miniprogram order still requires payment",
 				status: 409,
 			});
+
+			const sellableAfterOrder = await post<{
+				success: boolean;
+				result: { status: string; third_party_order_id: string | null };
+			}>("/sellable-products/read", { id: create.body.result.id });
+			expect(sellableAfterOrder.response.status).toBe(200);
+			expect(sellableAfterOrder.body.result).toEqual(
+				expect.objectContaining({
+					status: "pending",
+					third_party_order_id: null,
+				}),
+			);
 		});
 
 		it("uses captured miniprogram pay defaults for a legacy token", async () => {
@@ -1242,6 +1406,7 @@ describe("Lucky ordering API", () => {
 				sellable_product_ids: ["5151"],
 				sellable_sku_codes: ["SP3571-00244"],
 				order_user_id: user.id,
+				status: "pending",
 			});
 			expect(create.response.status).toBe(201);
 

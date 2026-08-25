@@ -284,4 +284,90 @@ describe("lkadmin management API", () => {
 		expect(deleted.response.status).toBe(200);
 		expect(deleted.body.result.isDelete).toBe(1);
 	});
+
+	it("creates, lists, updates, reads, and soft deletes coffee cards", async () => {
+		const user = await createOrderUser();
+		const created = await post<{
+			result: {
+				id: number;
+				orderUserId: string;
+				cafeKuId: string;
+				couponNo: string | null;
+				coffeeVoucherType: number;
+				cardName: string | null;
+				usableQuantity: number;
+				syncedProductCount: number;
+				generatedSellableCount: number;
+				raw: Record<string, unknown>;
+				isDelete: number;
+			};
+		}>("/lkadmin/coffee-cards/create", {
+			orderUserId: user.id,
+			cafeKuId: "CK-ADMIN-001",
+			couponNo: "NO-ADMIN-001",
+			coffeeVoucherType: 2,
+			cardName: "后台测试咖啡券",
+			usableQuantity: 3,
+			syncedProductCount: 1,
+			generatedSellableCount: 2,
+			raw: { source: "admin-test" },
+		});
+
+		expect(created.response.status).toBe(201);
+		expect(created.body.result).toEqual(
+			expect.objectContaining({
+				id: expect.any(Number),
+				orderUserId: user.id,
+				cafeKuId: "CK-ADMIN-001",
+				couponNo: "NO-ADMIN-001",
+				coffeeVoucherType: 2,
+				cardName: "后台测试咖啡券",
+				usableQuantity: 3,
+				syncedProductCount: 1,
+				generatedSellableCount: 2,
+				raw: { source: "admin-test" },
+				isDelete: 0,
+			}),
+		);
+
+		const id = created.body.result.id;
+		const list = await post<{ result: Array<{ id: number; cafeKuId: string }> }>(
+			"/lkadmin/coffee-cards/list",
+		);
+		expect(list.body.result).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ id, cafeKuId: "CK-ADMIN-001" }),
+			]),
+		);
+
+		const update = await post<{
+			result: { id: number; cardName: string; usableQuantity: number };
+		}>("/lkadmin/coffee-cards/update", {
+			id,
+			cardName: "后台测试咖啡券已改",
+			usableQuantity: 4,
+		});
+		expect(update.response.status).toBe(200);
+		expect(update.body.result).toEqual(
+			expect.objectContaining({
+				id,
+				cardName: "后台测试咖啡券已改",
+				usableQuantity: 4,
+			}),
+		);
+
+		const read = await post<{ result: { id: number; couponNo: string } }>(
+			"/lkadmin/coffee-cards/read",
+			{ id },
+		);
+		expect(read.response.status).toBe(200);
+		expect(read.body.result.couponNo).toBe("NO-ADMIN-001");
+
+		const deleted = await post<{ result: { id: number; isDelete: number } }>(
+			"/lkadmin/coffee-cards/delete",
+			{ id },
+		);
+		expect(deleted.response.status).toBe(200);
+		expect(deleted.body.result.isDelete).toBe(1);
+	});
 });

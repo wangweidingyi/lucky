@@ -121,3 +121,21 @@ export async function replaceSellableProductCatalogRefs(
 
     return findActiveSellableProduct(db, id);
 }
+
+export async function markSellableProductDone(
+    db: D1Database,
+    id: string,
+    orderId: string | null,
+) {
+    await db
+        .prepare(
+            `UPDATE lucky_sellable_products
+             SET status = 'done',
+                 third_party_order_id = COALESCE(?, third_party_order_id)
+             WHERE id = ? AND is_delete = 0 AND status = 'pending'`,
+        )
+        .bind(orderId, id)
+        .run();
+
+    return findActiveSellableProduct(db, id);
+}
