@@ -1,17 +1,7 @@
 import { z } from "zod";
+import { openApiJsonObjectSchema } from "../shared/openapiSchemas";
 
-const jsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
-	z.union([
-		z.string(),
-		z.number(),
-		z.boolean(),
-		z.null(),
-		z.array(jsonValueSchema),
-		z.record(jsonValueSchema),
-	]),
-);
-
-const productAttrSchema = z.record(jsonValueSchema);
+const productAttrSchema = openApiJsonObjectSchema;
 
 export const luckinProductInputSchema = z
 	.object({
@@ -36,7 +26,7 @@ export const luckinProductRowSchema = z.object({
 	estimatePrice: z.number().nullable(),
 	tags: z.array(z.string()),
 	attrs: z.array(productAttrSchema),
-	raw: z.record(jsonValueSchema),
+	raw: openApiJsonObjectSchema,
 	sourceQuery: z.string().nullable(),
 	lastSyncedAt: z.string(),
 	isDelete: z.number().int(),
@@ -172,4 +162,3 @@ export async function listRandomLuckinProducts(db: D1Database, limit: number) {
 
 	return result.results.map(deserializeLuckinProduct);
 }
-

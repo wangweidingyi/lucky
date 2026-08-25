@@ -7,6 +7,7 @@ import {
 } from "../../models/luckySellableProducts";
 import { fail, ok } from "../../shared/responses";
 import { appLogger } from "../../shared/logger";
+import { openApiJsonValueSchema } from "../../shared/openapiSchemas";
 import { AppContext } from "../../types";
 
 const mcpUrl = "https://gwmcp.lkcoffee.com/order/user/mcp";
@@ -267,7 +268,7 @@ export function createLuckinMcpToolRoute(
 			responses: {
 				"200": {
 					description: `${toolName} result`,
-					...contentJson(z.unknown()),
+					...contentJson(openApiJsonValueSchema),
 				},
 			},
 		};

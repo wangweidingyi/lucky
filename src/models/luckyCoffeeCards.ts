@@ -1,16 +1,6 @@
 import { z } from "zod";
 import { idSchema } from "./LuckyOrderUsers";
-
-const jsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
-	z.union([
-		z.string(),
-		z.number(),
-		z.boolean(),
-		z.null(),
-		z.array(jsonValueSchema),
-		z.record(jsonValueSchema),
-	]),
-);
+import { openApiJsonObjectSchema } from "../shared/openapiSchemas";
 
 export const coffeeCardRowSchema = z.object({
 	id: z.number().int(),
@@ -23,7 +13,7 @@ export const coffeeCardRowSchema = z.object({
 	syncedProductCount: z.number().int(),
 	generatedSellableCount: z.number().int(),
 	lastSyncedAt: z.string(),
-	raw: z.record(jsonValueSchema),
+	raw: openApiJsonObjectSchema,
 	isDelete: z.number().int(),
 });
 

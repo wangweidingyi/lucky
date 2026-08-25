@@ -35,6 +35,7 @@ import {
 	syncLuckinCoffeeCardProducts,
 	syncLuckinCoffeeCards,
 } from "./couponSync";
+import { openApiJsonObjectSchema } from "../../shared/openapiSchemas";
 
 const adminToken = "lkadmin-dev-token";
 
@@ -71,17 +72,7 @@ const coffeeCardIdBodySchema = z.object({
 	id: z.number().int().positive(),
 });
 
-const jsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
-	z.union([
-		z.string(),
-		z.number(),
-		z.boolean(),
-		z.null(),
-		z.array(jsonValueSchema),
-		z.record(jsonValueSchema),
-	]),
-);
-const productAttrSchema = z.record(jsonValueSchema);
+const productAttrSchema = openApiJsonObjectSchema;
 
 const adminProductCreateBodySchema = z.object({
 	productId: z.number().int().positive(),
@@ -92,7 +83,7 @@ const adminProductCreateBodySchema = z.object({
 	estimatePrice: z.number().optional().nullable(),
 	tags: z.array(z.string()).optional().default([]),
 	attrs: z.array(productAttrSchema).optional().default([]),
-	raw: z.record(jsonValueSchema).optional().default({}),
+	raw: openApiJsonObjectSchema.optional().default({}),
 	sourceQuery: z.string().optional().nullable(),
 });
 
@@ -105,7 +96,7 @@ const adminProductUpdateBodySchema = productIdBodySchema.extend({
 	estimatePrice: z.number().optional().nullable(),
 	tags: z.array(z.string()).optional(),
 	attrs: z.array(productAttrSchema).optional(),
-	raw: z.record(jsonValueSchema).optional(),
+	raw: openApiJsonObjectSchema.optional(),
 	sourceQuery: z.string().optional().nullable(),
 });
 
@@ -118,7 +109,7 @@ const adminCoffeeCardCreateBodySchema = z.object({
 	usableQuantity: z.number().int().nonnegative().optional().default(1),
 	syncedProductCount: z.number().int().nonnegative().optional().default(0),
 	generatedSellableCount: z.number().int().nonnegative().optional().default(0),
-	raw: z.record(jsonValueSchema).optional().default({}),
+	raw: openApiJsonObjectSchema.optional().default({}),
 });
 
 const adminCoffeeCardUpdateBodySchema = coffeeCardIdBodySchema.extend({
@@ -130,7 +121,7 @@ const adminCoffeeCardUpdateBodySchema = coffeeCardIdBodySchema.extend({
 	usableQuantity: z.number().int().nonnegative().optional(),
 	syncedProductCount: z.number().int().nonnegative().optional(),
 	generatedSellableCount: z.number().int().nonnegative().optional(),
-	raw: z.record(jsonValueSchema).optional(),
+	raw: openApiJsonObjectSchema.optional(),
 });
 
 type ProductDbRow = Parameters<typeof deserializeLuckinProduct>[0];

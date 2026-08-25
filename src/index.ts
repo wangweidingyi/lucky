@@ -1,4 +1,4 @@
-import { ApiException, fromHono } from "chanfana";
+import { ApiException, fromHono, getSwaggerUI } from "chanfana";
 import { Hono } from "hono";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 // import { orderUsersRouter } from "./endpoints/orderUsers/router";
@@ -36,7 +36,9 @@ app.onError((err, c) => {
 
 // Setup OpenAPI registry
 const openapi = fromHono(app, {
-	docs_url: "/",
+	docs_url: null,
+	redoc_url: null,
+	openapi_url: null,
 	schema: {
 		info: {
 			title: "Lucky Ordering API",
@@ -53,6 +55,27 @@ openapi.route("/order", orderRouter);
 openapi.route("/xy/order", xyOrderRouter);
 openapi.route("/lkadmin", lkadminRouter);
 
+app.get("/", (c) => {
+	if (!isLocalDocumentationRequest(c.req.url)) {
+		return c.notFound();
+	}
+
+	return c.html(getSwaggerUI("/openapi.json"));
+});
+
+app.get("/openapi.json", (c) => {
+	if (!isLocalDocumentationRequest(c.req.url)) {
+		return c.notFound();
+	}
+
+	return c.json((openapi as unknown as { schema: unknown }).schema);
+});
+
+function isLocalDocumentationRequest(url: string) {
+	return ["localhost", "127.0.0.1", "0.0.0.0", "local.test"].includes(
+		new URL(url).hostname,
+	);
+}
 
 // Export the Hono app
 export default app;

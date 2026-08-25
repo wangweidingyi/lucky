@@ -11,6 +11,7 @@ import {
 	sellableProductIdBodySchema,
 } from "../../models/luckySellableProducts";
 import { appLogger } from "../../shared/logger";
+import { openApiJsonValueSchema } from "../../shared/openapiSchemas";
 import { fail, ok } from "../../shared/responses";
 import { AppContext } from "../../types";
 
@@ -51,7 +52,7 @@ const productListItemSchema = z.object({
 	checked: z.number().int().optional(),
 	eatway: z.string().optional(),
 	cafeKuId: z.string().optional(),
-	processTypeDetailList: z.array(z.unknown()).optional(),
+	processTypeDetailList: z.array(openApiJsonValueSchema).optional(),
 	name: z.string().optional(),
 	discountPrice: z.number().optional(),
 	initialPrice: z.number().optional(),
@@ -1002,7 +1003,7 @@ export class MiniprogramCreateOrder extends OpenAPIRoute {
 		responses: {
 			"200": {
 				description: "Miniprogram order preview and creation result",
-				...contentJson(z.unknown()),
+				...contentJson(openApiJsonValueSchema),
 			},
 		},
 	};
