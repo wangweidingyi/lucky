@@ -1,5 +1,6 @@
 import { ApiException, fromHono, getSwaggerUI } from "chanfana";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 // import { orderUsersRouter } from "./endpoints/orderUsers/router";
 // import { sellableProductsRouter } from "./endpoints/sellableProducts/router";
@@ -10,6 +11,23 @@ import { appLogger } from "./shared/logger";
 
 // Start a Hono app
 const app = new Hono<{ Bindings: Env }>();
+const allowedCorsOrigins = [
+	"http://localhost:5173",
+	"http://localhost:5174",
+	"http://localhost:5175",
+	"http://localhost:5176",
+	"https://lk.maerai.com",
+];
+
+app.use(
+	"*",
+	cors({
+		origin: allowedCorsOrigins,
+		allowMethods: ["GET", "POST", "OPTIONS"],
+		allowHeaders: ["Content-Type", "Authorization"],
+		maxAge: 86400,
+	}),
+);
 
 app.onError((err, c) => {
 	if (err instanceof ApiException) {
