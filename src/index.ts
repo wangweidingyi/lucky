@@ -5,6 +5,7 @@ import { ContentfulStatusCode } from "hono/utils/http-status";
 // import { sellableProductsRouter } from "./endpoints/sellableProducts/router";
 import { orderRouter } from "./controller/order/order";
 import { xyOrderRouter } from "./controller/xyorder/xyorder";
+import { lkadminRouter } from "./controller/lkadmin/lkadmin";
 
 // Start a Hono app
 const app = new Hono<{ Bindings: Env }>();
@@ -47,6 +48,7 @@ const openapi = fromHono(app, {
 
 openapi.route("/order", orderRouter);
 openapi.route("/xy/order", xyOrderRouter);
+openapi.route("/lkadmin", lkadminRouter);
 
 
 // Export the Hono app

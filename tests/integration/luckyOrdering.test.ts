@@ -14,21 +14,39 @@ import {
 import { syncLuckinCatalogForSellableProduct } from "../../src/controller/order/catalog";
 
 const idPattern = /^[a-zA-Z0-9]{10}$/;
+const adminToken = "lkadmin-dev-token";
 const miniprogramAesKey = "CJQjAc1hYieC4QYb";
 const miniprogramUid =
 	"f931e729-4279-4d30-bdc5-0254af362e551787569733931-2926637-efAmj7k25Su8lEAGHeSrLLDaF7WCSl67RQEGsHnOQYYh3CdepZU4TszMDkSxpjkO";
 
 async function post<T>(path: string, body: Record<string, unknown> = {}) {
-	const response = await SELF.fetch(`http://local.test${path}`, {
+	const adminPath =
+		path.startsWith("/order-users/") || path.startsWith("/sellable-products/")
+			? `/lkadmin${path}`
+			: path;
+	const response = await SELF.fetch(`http://local.test${adminPath}`, {
 		method: "POST",
-		headers: { "Content-Type": "application/json" },
+		headers: {
+			"Content-Type": "application/json",
+			...(adminPath.startsWith("/lkadmin/")
+				? { Authorization: `Bearer ${adminToken}` }
+				: {}),
+		},
 		body: JSON.stringify(body),
 	});
 	const text = await response.text();
+	const parsed = text ? parseJson<Record<string, unknown>>(text) : {};
+	const normalized =
+		adminPath !== path && "code" in parsed
+			? {
+					...parsed,
+					success: response.ok,
+				}
+			: parsed;
 
 	return {
 		response,
-		body: text ? parseJson<T>(text) : ({} as T),
+		body: normalized as T,
 	};
 }
 
