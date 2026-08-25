@@ -5,6 +5,7 @@ import { upsertCoffeeCard, type CoffeeCardRow } from "../../models/luckyCoffeeCa
 import { upsertLuckinProducts } from "../../models/luckyProducts";
 import { serializeArray } from "../../models/luckySellableProducts";
 import { generateId } from "../../shared/id";
+import { appLogger } from "../../shared/logger";
 
 const miniprogramApiBaseUrl = "https://capi.lkcoffee.com";
 const coffeeCardListPath = "/resource/m/promotion/v2/myself/list";
@@ -428,20 +429,87 @@ async function postLuckinJson(
 ) {
 	const url = `${auth.baseUrl}${path}`;
 	const body = buildSignedFormBody(payload, auth);
-	const response = await fetcher(url, {
+	const headers = buildMiniprogramHeaders(payload, auth);
+	logCouponSync("third_party.request", {
+		path,
+		url,
 		method: "POST",
-		headers: buildMiniprogramHeaders(payload, auth),
-		body,
+		cid: auth.cid,
+		headers: summarizeRequestHeaders(headers),
+		payloadBeforeEncrypt: payload,
+		formParams: summarizeFormBody(body),
 	});
-	const rawText = await response.text();
+
+	let response: Response;
+	try {
+		response = await fetcher(url, {
+			method: "POST",
+			headers,
+			body,
+		});
+	} catch (error) {
+		logCouponSyncError("third_party.request.failed", {
+			path,
+			url,
+			error,
+		});
+		throw new CoffeeCardSyncError("Luckin miniprogram request failed", 502);
+	}
+
+	let rawText: string;
+	try {
+		rawText = await response.text();
+	} catch (error) {
+		logCouponSyncError("third_party.response.read_failed", {
+			path,
+			url,
+			status: response.status,
+			error,
+		});
+		throw new CoffeeCardSyncError("Luckin miniprogram request failed", 502);
+	}
+	logCouponSync("third_party.response.http", {
+		path,
+		url,
+		status: response.status,
+		ok: response.ok,
+		contentType: response.headers.get("content-type"),
+		rawLength: rawText.length,
+		rawPrefix: rawText.slice(0, 160),
+	});
 
 	if (!response.ok) {
+		logCouponSyncError("third_party.response.failed", {
+			path,
+			url,
+			status: response.status,
+			contentType: response.headers.get("content-type"),
+			rawLength: rawText.length,
+			rawPrefix: rawText.slice(0, 240),
+		});
 		throw new CoffeeCardSyncError("Luckin miniprogram request failed", 502);
 	}
 
 	try {
-		return parseLuckinResponseBody(rawText, auth.aesKey);
-	} catch {
+		const parsed = parseLuckinResponseBody(rawText, auth.aesKey);
+		logCouponSync("third_party.response", {
+			path,
+			url,
+			code: parsed.code,
+			busiCode: parsed.busiCode,
+			msg: parsed.msg,
+			status: parsed.status,
+			responseAfterDecrypt: parsed,
+		});
+		return parsed;
+	} catch (error) {
+		logCouponSyncError("third_party.response.invalid", {
+			path,
+			url,
+			error: error instanceof Error ? error.message : String(error),
+			rawLength: rawText.length,
+			rawPrefix: rawText.slice(0, 240),
+		});
 		throw new CoffeeCardSyncError("Invalid Luckin miniprogram response", 502);
 	}
 }
@@ -534,6 +602,51 @@ function buildMiniprogramHeaders(
 		"User-Agent": defaultMiniprogramUserAgent,
 		...(auth.cookie ? { Cookie: auth.cookie } : {}),
 	};
+}
+
+function summarizeFormBody(body: string) {
+	const params = new URLSearchParams(body);
+	const q = params.get("q") ?? "";
+
+	return {
+		bodyLength: body.length,
+		cid: params.get("cid"),
+		dk: params.get("dk"),
+		sign: params.get("sign"),
+		hasUid: params.has("uid"),
+		q: {
+			length: q.length,
+			prefix: q.slice(0, 48),
+		},
+	};
+}
+
+function summarizeRequestHeaders(headers: Record<string, string>) {
+	return {
+		mid: headers["X-LK-MID"],
+		sid: headers["X-LK-SID"],
+		csid: headers["X-LK-CSID"],
+		akv: headers["X-LK-AKV"],
+		ostype: headers["x-lkwx-ostype"],
+		sdkversion: headers["x-lkwx-sdkversion"],
+		xwebXhr: headers.xweb_xhr,
+		acceptLanguage: headers["Accept-Language"],
+		secFetchSite: headers["Sec-Fetch-Site"],
+		secFetchMode: headers["Sec-Fetch-Mode"],
+		secFetchDest: headers["Sec-Fetch-Dest"],
+		referer: headers.Referer,
+		hasCookie: Boolean(headers.Cookie),
+		cookieKeys: headers.Cookie ? getCookieKeys(headers.Cookie) : [],
+		cookieHasUid: Boolean(headers.Cookie && extractCookieValue(headers.Cookie, "uid")),
+	};
+}
+
+function logCouponSync(event: string, data: Record<string, unknown>) {
+	appLogger.info("src/controller/lkadmin/couponSync.ts:postLuckinJson", event, data);
+}
+
+function logCouponSyncError(event: string, data: Record<string, unknown>) {
+	appLogger.error("src/controller/lkadmin/couponSync.ts:postLuckinJson", event, data);
 }
 
 function getRequestSid(payload: Record<string, unknown>) {
@@ -712,6 +825,15 @@ function extractCookieValue(cookie: string, key: string) {
 			return [part.slice(0, index).trim(), part.slice(index + 1)] as const;
 		})
 		.find(([name]) => name.toLowerCase() === targetKey)?.[1];
+}
+
+function getCookieKeys(cookie: string) {
+	return cookie
+		.split(";")
+		.map((part) => part.trim())
+		.map((part) => part.slice(0, part.indexOf("=") >= 0 ? part.indexOf("=") : part.length))
+		.map((name) => name.trim())
+		.filter(Boolean);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

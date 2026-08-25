@@ -6,6 +6,7 @@ import {
 	sellableProductIdBodySchema,
 } from "../../models/luckySellableProducts";
 import { fail, ok } from "../../shared/responses";
+import { appLogger } from "../../shared/logger";
 import { AppContext } from "../../types";
 
 const mcpUrl = "https://gwmcp.lkcoffee.com/order/user/mcp";
@@ -43,41 +44,147 @@ export async function forwardLuckinMcpToolForSellableProduct(
 		throw new LuckinMcpForwardError("Order user not found", 404);
 	}
 
-	const mcpResponse = await fetcher(mcpUrl, {
-		method: "POST",
-		headers: {
-			Accept: "application/json, text/event-stream",
-			Authorization: `Bearer ${orderUser.token}`,
-			"Content-Type": "application/json",
+	const requestPayload = {
+		jsonrpc: "2.0",
+		id: input.toolName,
+		method: "tools/call",
+		params: {
+			name: input.toolName,
+			arguments: input.arguments,
 		},
-		body: JSON.stringify({
-			jsonrpc: "2.0",
-			id: input.toolName,
-			method: "tools/call",
-			params: {
-				name: input.toolName,
-				arguments: input.arguments,
-			},
-		}),
-	});
+	};
+	const headers = {
+		Accept: "application/json, text/event-stream",
+		Authorization: `Bearer ${orderUser.token}`,
+		"Content-Type": "application/json",
+	};
 
-	if (!mcpResponse.ok) {
+	appLogger.info(
+		"src/controller/order/luckinMcp.ts:forwardLuckinMcpToolForSellableProduct",
+		"third_party.request",
+		{
+			url: mcpUrl,
+			method: "POST",
+			toolName: input.toolName,
+			headers,
+			payload: requestPayload,
+		},
+	);
+
+	let mcpResponse: Response;
+	try {
+		mcpResponse = await fetcher(mcpUrl, {
+			method: "POST",
+			headers,
+			body: JSON.stringify(requestPayload),
+		});
+	} catch (error) {
+		appLogger.error(
+			"src/controller/order/luckinMcp.ts:forwardLuckinMcpToolForSellableProduct",
+			"third_party.request.failed",
+			{
+				url: mcpUrl,
+				toolName: input.toolName,
+				error,
+			},
+		);
 		throw new LuckinMcpForwardError("Luckin MCP request failed", 502);
 	}
 
-	const payload = await parseMcpResponse(mcpResponse);
+	let responseText: string;
+	try {
+		responseText = await mcpResponse.text();
+	} catch (error) {
+		appLogger.error(
+			"src/controller/order/luckinMcp.ts:forwardLuckinMcpToolForSellableProduct",
+			"third_party.response.read_failed",
+			{
+				url: mcpUrl,
+				toolName: input.toolName,
+				status: mcpResponse.status,
+				error,
+			},
+		);
+		throw new LuckinMcpForwardError("Luckin MCP request failed", 502);
+	}
 
-	return extractToolData(payload);
+	appLogger.info(
+		"src/controller/order/luckinMcp.ts:forwardLuckinMcpToolForSellableProduct",
+		"third_party.response.http",
+		{
+			url: mcpUrl,
+			toolName: input.toolName,
+			status: mcpResponse.status,
+			ok: mcpResponse.ok,
+			contentType: mcpResponse.headers.get("content-type"),
+			rawResponse: responseText,
+		},
+	);
+
+	if (!mcpResponse.ok) {
+		appLogger.error(
+			"src/controller/order/luckinMcp.ts:forwardLuckinMcpToolForSellableProduct",
+			"third_party.response.failed",
+			{
+				url: mcpUrl,
+				toolName: input.toolName,
+				status: mcpResponse.status,
+				contentType: mcpResponse.headers.get("content-type"),
+				rawResponse: responseText,
+			},
+		);
+		throw new LuckinMcpForwardError("Luckin MCP request failed", 502);
+	}
+
+	let payload: unknown;
+	let toolData: unknown;
+	try {
+		payload = parseMcpResponseText(
+			responseText,
+			mcpResponse.headers.get("content-type"),
+		);
+		toolData = extractToolData(payload);
+	} catch (error) {
+		appLogger.error(
+			"src/controller/order/luckinMcp.ts:forwardLuckinMcpToolForSellableProduct",
+			"third_party.response.invalid",
+			{
+				url: mcpUrl,
+				toolName: input.toolName,
+				status: mcpResponse.status,
+				contentType: mcpResponse.headers.get("content-type"),
+				rawResponse: responseText,
+				error,
+			},
+		);
+
+		if (error instanceof LuckinMcpForwardError) {
+			throw error;
+		}
+
+		throw new LuckinMcpForwardError("Invalid Luckin MCP response", 502);
+	}
+
+	appLogger.info(
+		"src/controller/order/luckinMcp.ts:forwardLuckinMcpToolForSellableProduct",
+		"third_party.response",
+		{
+			url: mcpUrl,
+			toolName: input.toolName,
+			responseParsed: payload,
+			toolData,
+		},
+	);
+
+	return toolData;
 }
 
-async function parseMcpResponse(response: Response) {
-	const text = await response.text();
-
+function parseMcpResponseText(text: string, contentType: string | null) {
 	if (!text) {
 		return null;
 	}
 
-	if (response.headers.get("content-type")?.includes("text/event-stream")) {
+	if (contentType?.includes("text/event-stream")) {
 		const eventData = text
 			.split("\n")
 			.filter((line) => line.startsWith("data:"))

@@ -10,6 +10,7 @@ import {
 	markSellableProductDone,
 	sellableProductIdBodySchema,
 } from "../../models/luckySellableProducts";
+import { appLogger } from "../../shared/logger";
 import { fail, ok } from "../../shared/responses";
 import { AppContext } from "../../types";
 
@@ -380,26 +381,50 @@ async function postLuckinJson(
 	const url = `${auth.baseUrl}${path}`;
 	const body = buildSignedFormBody(payload, auth);
 	const headers = buildMiniprogramHeaders(payload, auth, options);
-	logMiniprogram("request:start", {
+	logMiniprogram("third_party.request", {
 		path,
 		url,
+		method: "POST",
 		cid: auth.cid,
 		hasCookie: Boolean(auth.cookie),
 		cookieHasUid: Boolean(auth.cookie && extractCookieValue(auth.cookie, "uid")),
 		headers: summarizeRequestHeaders(headers),
-		payload: sanitizeMiniprogramLogValue(payload),
-		form: summarizeFormBody(body),
+		payloadBeforeEncrypt: payload,
+		formParams: summarizeFormBody(body),
 	});
 
-	const response = await fetcher(url, {
-		method: "POST",
-		headers,
-		body,
-	});
-	const rawText = await response.text();
+	let response: Response;
+	try {
+		response = await fetcher(url, {
+			method: "POST",
+			headers,
+			body,
+		});
+	} catch (error) {
+		logMiniprogramError("third_party.request.failed", {
+			path,
+			url,
+			error,
+		});
+		throw new MiniprogramOrderError("Luckin miniprogram request failed", 502);
+	}
 
-	logMiniprogram("response:http", {
+	let rawText: string;
+	try {
+		rawText = await response.text();
+	} catch (error) {
+		logMiniprogramError("third_party.response.read_failed", {
+			path,
+			url,
+			status: response.status,
+			error,
+		});
+		throw new MiniprogramOrderError("Luckin miniprogram request failed", 502);
+	}
+
+	logMiniprogram("third_party.response.http", {
 		path,
+		url,
 		status: response.status,
 		ok: response.ok,
 		contentType: response.headers.get("content-type"),
@@ -410,6 +435,14 @@ async function postLuckinJson(
 	});
 
 	if (!response.ok) {
+		logMiniprogramError("third_party.response.failed", {
+			path,
+			url,
+			status: response.status,
+			contentType: response.headers.get("content-type"),
+			rawLength: rawText.length,
+			rawPrefix: rawText.slice(0, 240),
+		});
 		throw new MiniprogramOrderError("Luckin miniprogram request failed", 502);
 	}
 
@@ -420,23 +453,24 @@ async function postLuckinJson(
 			auth.aesKey,
 			path,
 		);
-		logMiniprogram("response:parsed", {
+		logMiniprogram("third_party.response", {
 			path,
+			url,
 			code: parsed.code,
 			busiCode: parsed.busiCode,
 			msg: parsed.msg,
 			status: parsed.status,
 			loginState: parsed.loginState,
 			version: parsed.version,
-			handler: sanitizeMiniprogramLogValue(parsed.handler),
+			handler: parsed.handler,
 			hasContent: Boolean(parsed.content),
-			content: parsed.code === 1 ? "[success-content]" : sanitizeMiniprogramLogValue(parsed.content),
+			responseAfterDecrypt: parsed,
 			uid: parsed.uid ? "[present]" : "",
 			zeusId: parsed.zeusId,
 		});
 		return parsed;
 	} catch (error) {
-		logMiniprogram("response:invalid", {
+		logMiniprogramError("third_party.response.invalid", {
 			path,
 			error: error instanceof Error ? error.message : String(error),
 			contentType: response.headers.get("content-type"),
@@ -572,13 +606,14 @@ function summarizeFormBody(body: string) {
 
 	return {
 		bodyLength: body.length,
-		bodyPrefix: body.slice(0, 80),
 		cid: params.get("cid"),
 		dk: params.get("dk"),
 		sign: params.get("sign"),
 		hasUid: params.has("uid"),
-		qLength: q.length,
-		qPrefix: q.slice(0, 48),
+		q: {
+			length: q.length,
+			prefix: q.slice(0, 48),
+		},
 	};
 }
 
@@ -794,28 +829,19 @@ function looksLikeJson(value: string) {
 }
 
 function logMiniprogram(step: string, data: Record<string, unknown>) {
-	console.log(`[miniprogramCreateOrder] ${step}`, JSON.stringify(data));
+	appLogger.info(
+		"src/controller/order/miniprogramCreateOrder.ts:miniprogramCreateOrderForSellableProduct",
+		step,
+		data,
+	);
 }
 
-function sanitizeMiniprogramLogValue(value: unknown): unknown {
-	if (Array.isArray(value)) {
-		return value.map(sanitizeMiniprogramLogValue);
-	}
-
-	if (value && typeof value === "object") {
-		return Object.fromEntries(
-			Object.entries(value as Record<string, unknown>).map(([key, item]) => [
-				key,
-				key.toLowerCase() === "uid"
-					? item
-						? "[present]"
-						: ""
-					: sanitizeMiniprogramLogValue(item),
-			]),
-		);
-	}
-
-	return value;
+function logMiniprogramError(step: string, data: Record<string, unknown>) {
+	appLogger.error(
+		"src/controller/order/miniprogramCreateOrder.ts:miniprogramCreateOrderForSellableProduct",
+		step,
+		data,
+	);
 }
 
 function extractCookieValue(cookie: string, key: string) {

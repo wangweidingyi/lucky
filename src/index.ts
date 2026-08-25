@@ -6,6 +6,7 @@ import { ContentfulStatusCode } from "hono/utils/http-status";
 import { orderRouter } from "./controller/order/order";
 import { xyOrderRouter } from "./controller/xyorder/xyorder";
 import { lkadminRouter } from "./controller/lkadmin/lkadmin";
+import { appLogger } from "./shared/logger";
 
 // Start a Hono app
 const app = new Hono<{ Bindings: Env }>();
@@ -19,7 +20,9 @@ app.onError((err, c) => {
 		);
 	}
 
-	console.error("Global error handler caught:", err); // Log the error if it's not known
+	appLogger.error("src/index.ts:app.onError", "request.unhandled_error", {
+		error: err,
+	});
 
 	// For other errors, return a generic 500 response
 	return c.json(
