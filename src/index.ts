@@ -17,6 +17,7 @@ const allowedCorsOrigins = [
 	"http://localhost:5175",
 	"http://localhost:5176",
 	"https://lk.maerai.com",
+	"https://adminlkk.maerai.com",
 ];
 
 app.use(
