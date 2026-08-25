@@ -304,7 +304,11 @@ function normalizeLuckinProduct(product: Record<string, unknown>) {
 		productId,
 		skuCode,
 		productName,
-		pictureUrl: stringValue(product.pictureUrl) ?? stringValue(product.picUrl) ?? null,
+		pictureUrl:
+			stringValue(product.pictureUrl) ??
+			stringValue(product.defaultPicUrl) ??
+			stringValue(product.picUrl) ??
+			null,
 		initialPrice: numberValue(product.initialPrice),
 		estimatePrice: numberValue(product.estimatePrice),
 		tags: Array.isArray(product.tags)

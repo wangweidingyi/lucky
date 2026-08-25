@@ -253,6 +253,8 @@ describe("Luckin coupon sync", () => {
 							productId: 5152,
 							skuCode: "SP3571-00245",
 							productName: "生椰拿铁",
+							pictureUrl: null,
+							defaultPicUrl: "https://img.example.test/coconut-latte.png",
 							initialPrice: 29,
 							estimatePrice: 0,
 						},
@@ -282,9 +284,18 @@ describe("Luckin coupon sync", () => {
 				cafeKuId: "CK002",
 			}),
 		);
+		expect(result.products).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					productId: 5152,
+					skuCode: "SP3571-00245",
+					pictureUrl: "https://img.example.test/coconut-latte.png",
+				}),
+			]),
+		);
 
 		const products = await env.DB.prepare(
-			`SELECT product_id, sku_code, product_name, source_query
+			`SELECT product_id, sku_code, product_name, picture_url, source_query
 			 FROM lucky_products
 			 WHERE product_id IN (5151, 5152)
 			 ORDER BY product_id ASC`,
@@ -292,6 +303,7 @@ describe("Luckin coupon sync", () => {
 			product_id: number;
 			sku_code: string;
 			product_name: string;
+			picture_url: string | null;
 			source_query: string;
 		}>();
 		expect(products.results).toEqual([
@@ -299,6 +311,7 @@ describe("Luckin coupon sync", () => {
 				product_id: 5152,
 				sku_code: "SP3571-00245",
 				product_name: "生椰拿铁",
+				picture_url: "https://img.example.test/coconut-latte.png",
 				source_query: "coffee-card:CK002",
 			},
 		]);
@@ -369,6 +382,8 @@ describe("Luckin coupon sync", () => {
 							productId: 6151,
 							skuCode: "SP3571-10244",
 							name: "标准美式",
+							pictureUrl: null,
+							defaultPicUrl: "https://img.example.test/preview-americano.png",
 						},
 						{
 							productId: 6152,
@@ -396,6 +411,11 @@ describe("Luckin coupon sync", () => {
 			}),
 		);
 		expect(result.products.map((product) => product.productId)).toEqual([6151, 6152]);
+		expect(result.products[0]).toEqual(
+			expect.objectContaining({
+				pictureUrl: "https://img.example.test/preview-americano.png",
+			}),
+		);
 
 		const products = await env.DB.prepare(
 			`SELECT product_id FROM lucky_products WHERE product_id IN (6151, 6152)`,

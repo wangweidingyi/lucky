@@ -61,18 +61,39 @@ function parseJson<T>(value: string, fallback: T): T {
 	}
 }
 
+function stringValue(value: unknown) {
+	return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function resolveProductPictureUrlFromValues(...values: unknown[]) {
+	for (const value of values) {
+		const pictureUrl = stringValue(value);
+		if (pictureUrl) {
+			return pictureUrl;
+		}
+	}
+
+	return null;
+}
+
 export function deserializeLuckinProduct(row: LuckinProductDbRow): LuckinProductRow {
+	const raw = parseJson<Record<string, unknown>>(row.raw, {});
+
 	return {
 		id: row.id,
 		productId: row.product_id,
 		productName: row.product_name,
 		skuCode: row.sku_code,
-		pictureUrl: row.picture_url,
+		pictureUrl: resolveProductPictureUrlFromValues(
+			row.picture_url,
+			raw.defaultPicUrl,
+			raw.picUrl,
+		),
 		initialPrice: row.initial_price,
 		estimatePrice: row.estimate_price,
 		tags: parseJson<string[]>(row.tags, []),
 		attrs: parseJson<Array<Record<string, unknown>>>(row.attrs, []),
-		raw: parseJson<Record<string, unknown>>(row.raw, {}),
+		raw,
 		sourceQuery: row.source_query,
 		lastSyncedAt: row.last_synced_at,
 		isDelete: row.is_delete,
@@ -80,7 +101,11 @@ export function deserializeLuckinProduct(row: LuckinProductDbRow): LuckinProduct
 }
 
 function resolveProductPictureUrl(product: LuckinProductInput) {
-	return product.pictureUrl ?? product.defaultPicUrl ?? product.picUrl ?? null;
+	return resolveProductPictureUrlFromValues(
+		product.pictureUrl,
+		product.defaultPicUrl,
+		product.picUrl,
+	);
 }
 
 export async function upsertLuckinProducts(

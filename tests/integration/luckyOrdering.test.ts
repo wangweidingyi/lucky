@@ -1781,6 +1781,7 @@ describe("Lucky ordering API", () => {
 						productId: 44112,
 						productName: "橙C美式",
 						skuCode: "SP44112-00001",
+						pictureUrl: "",
 						defaultPicUrl: "https://img.example/orange-americano.png",
 					},
 				],
@@ -1793,6 +1794,53 @@ describe("Lucky ordering API", () => {
 						productId: 44112,
 						skuCode: "SP44112-00001",
 						pictureUrl: "https://img.example/orange-americano.png",
+					}),
+				]),
+			);
+		});
+
+		it("uses raw defaultPicUrl when listing historical products without picture_url", async () => {
+			await env.DB.prepare(
+				`INSERT INTO lucky_products (
+					product_id,
+					sku_code,
+					product_name,
+					picture_url,
+					initial_price,
+					estimate_price,
+					tags,
+					attrs,
+					raw,
+					source_query
+				)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			)
+				.bind(
+					55001,
+					"SP55001-00001",
+					"历史图片商品",
+					null,
+					18,
+					0,
+					"[]",
+					"[]",
+					JSON.stringify({
+						productId: 55001,
+						productName: "历史图片商品",
+						skuCode: "SP55001-00001",
+						pictureUrl: null,
+						defaultPicUrl: "https://img.example/historical-default.png",
+					}),
+					"coffee-card:OLD",
+				)
+				.run();
+
+			await expect(listLuckinProducts(env.DB)).resolves.toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						productId: 55001,
+						skuCode: "SP55001-00001",
+						pictureUrl: "https://img.example/historical-default.png",
 					}),
 				]),
 			);

@@ -4,7 +4,7 @@
 
 **Goal:** Store Luckin `defaultPicUrl` values in `lucky_products.picture_url` so synced products can display images.
 
-**Architecture:** Extend the shared Luckin product input model to accept `defaultPicUrl` and `picUrl`, then resolve the stored `picture_url` through one small helper. This keeps catalog sync, coffee-card product sync, and future shared upsert callers consistent without a database migration.
+**Architecture:** Extend the shared Luckin product input model to accept `defaultPicUrl` and `picUrl`, then resolve the stored `picture_url` through one small helper. Normalize coffee-card product payloads the same way before returning them to the management UI. Add a D1 migration to backfill existing rows that already have `raw.defaultPicUrl` but a blank `picture_url`.
 
 **Tech Stack:** TypeScript, Zod, Cloudflare D1, Vitest with Cloudflare Workers pool.
 
