@@ -9,6 +9,8 @@ export const luckinProductInputSchema = z
 		productName: z.string().min(1),
 		skuCode: z.string().min(1),
 		pictureUrl: z.string().optional().nullable(),
+		defaultPicUrl: z.string().optional().nullable(),
+		picUrl: z.string().optional().nullable(),
 		initialPrice: z.number().optional().nullable(),
 		estimatePrice: z.number().optional().nullable(),
 		tags: z.array(z.string()).optional().nullable(),
@@ -77,6 +79,10 @@ export function deserializeLuckinProduct(row: LuckinProductDbRow): LuckinProduct
 	};
 }
 
+function resolveProductPictureUrl(product: LuckinProductInput) {
+	return product.pictureUrl ?? product.defaultPicUrl ?? product.picUrl ?? null;
+}
+
 export async function upsertLuckinProducts(
 	db: D1Database,
 	products: Array<unknown>,
@@ -121,7 +127,7 @@ export async function upsertLuckinProducts(
 				product.productId,
 				product.skuCode,
 				product.productName,
-				product.pictureUrl ?? null,
+				resolveProductPictureUrl(product),
 				product.initialPrice ?? null,
 				product.estimatePrice ?? null,
 				JSON.stringify(product.tags ?? []),

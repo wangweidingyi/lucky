@@ -1773,6 +1773,31 @@ describe("Lucky ordering API", () => {
 			).toHaveLength(1);
 		});
 
+		it("uses defaultPicUrl as pictureUrl when syncing Luckin products", async () => {
+			await upsertLuckinProducts(
+				env.DB,
+				[
+					{
+						productId: 44112,
+						productName: "橙C美式",
+						skuCode: "SP44112-00001",
+						defaultPicUrl: "https://img.example/orange-americano.png",
+					},
+				],
+				"美式",
+			);
+
+			await expect(listLuckinProducts(env.DB)).resolves.toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						productId: 44112,
+						skuCode: "SP44112-00001",
+						pictureUrl: "https://img.example/orange-americano.png",
+					}),
+				]),
+			);
+		});
+
 		it("returns local catalog products through id and sign gated list endpoint", async () => {
 			const user = await createOrderUser({ token: "catalog-list-token" });
 			const create = await post<{
