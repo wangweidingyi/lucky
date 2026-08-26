@@ -17,3 +17,7 @@ export function generateId(length = 10) {
 export function generateMiniprogramSellableId() {
   return miniprogramSellableNanoid();
 }
+
+export function generateMiniprogramSellableSign() {
+  return miniprogramSellableNanoid();
+}

@@ -16,6 +16,7 @@ export const miniprogramSellableStatusSchema = z.enum([
 
 export const miniprogramSellableRowSchema = z.object({
   id: miniprogramSellableIdSchema,
+  sign: miniprogramSellableSignSchema.nullable(),
   coffeeCardId: z.number().int(),
   sellableQuantity: z.number().int(),
   status: miniprogramSellableStatusSchema,
@@ -48,6 +49,7 @@ export type MiniprogramSellableWithCard = z.infer<
 
 type MiniprogramSellableDbRow = {
   id: string;
+  sign: string | null;
   coffee_card_id: number;
   sellable_quantity: number;
   status: "waiting" | "pending" | "done";
@@ -88,6 +90,7 @@ export function deserializeMiniprogramSellable(
 ): MiniprogramSellableRow {
   return {
     id: row.id,
+    sign: row.sign,
     coffeeCardId: row.coffee_card_id,
     sellableQuantity: row.sellable_quantity,
     status: row.status,
@@ -143,6 +146,7 @@ export async function findActiveMiniprogramSellable(
 export async function findActiveMiniprogramSellableWithCard(
   db: D1Database,
   id: string,
+  sign: string,
 ) {
   const row = await db
     .prepare(
@@ -161,9 +165,9 @@ export async function findActiveMiniprogramSellableWithCard(
 				c.is_delete AS card_is_delete
 			 FROM miniprogram_sellable_products s
 			 JOIN miniprogram_coffee_cards c ON c.id = s.coffee_card_id
-			 WHERE s.id = ? AND s.is_delete = 0 AND c.is_delete = 0`,
+			 WHERE s.id = ? AND s.sign = ? AND s.is_delete = 0 AND c.is_delete = 0`,
     )
-    .bind(id)
+    .bind(id, sign)
     .first<MiniprogramSellableWithCardDbRow>();
 
   return row ? deserializeMiniprogramSellableWithCard(row) : null;

@@ -15,7 +15,10 @@ import {
   markMiniprogramSellableDone,
   miniprogramSellableIdBodySchema,
 } from "../../models/miniprogramSellableProducts";
-import { generateMiniprogramSellableId } from "../../shared/id";
+import {
+  generateMiniprogramSellableId,
+  generateMiniprogramSellableSign,
+} from "../../shared/id";
 import { fail, ok } from "../../shared/responses";
 import type { AppContext } from "../../types";
 import {
@@ -184,7 +187,7 @@ export async function fetchMiniprogramCardProductsForSellable(
   input: CardProductsInput,
 ) {
   const body = cardProductsBodySchema.parse(input);
-  const context = await getSellableContextOrThrow(db, body.id);
+  const context = await getSellableContextOrThrow(db, body.id, body.sign);
   const orderUser = await getMiniprogramOrderUserOrThrow(
     db,
     context.orderUserId,
@@ -214,7 +217,7 @@ export async function fetchMiniprogramProductDetailForSellable(
   input: ProductDetailInput,
 ) {
   const body = productDetailBodySchema.parse(input);
-  const context = await getSellableContextOrThrow(db, body.id);
+  const context = await getSellableContextOrThrow(db, body.id, body.sign);
   const orderUser = await getMiniprogramOrderUserOrThrow(
     db,
     context.orderUserId,
@@ -244,7 +247,7 @@ export async function switchMiniprogramProductAttributeForSellable(
   input: ProductAttributeSwitchInput,
 ) {
   const body = productAttributeSwitchBodySchema.parse(input);
-  const context = await getSellableContextOrThrow(db, body.id);
+  const context = await getSellableContextOrThrow(db, body.id, body.sign);
   const orderUser = await getMiniprogramOrderUserOrThrow(
     db,
     context.orderUserId,
@@ -274,7 +277,7 @@ export async function queryMiniprogramShopsForSellable(
   input: ShopQueryInput,
 ) {
   const body = shopQueryBodySchema.parse(input);
-  const context = await getSellableContextOrThrow(db, body.id);
+  const context = await getSellableContextOrThrow(db, body.id, body.sign);
   const orderUser = await getMiniprogramOrderUserOrThrow(
     db,
     context.orderUserId,
@@ -311,7 +314,7 @@ export async function createMiniprogramOrderForSellable(
   input: CreateOrderInput,
 ) {
   const body = createOrderBodySchema.parse(input);
-  const context = await getSellableContextOrThrow(db, body.id);
+  const context = await getSellableContextOrThrow(db, body.id, body.sign);
 
   if (context.status === "done") {
     throw new MiniprogramOrderError("Sellable product is already done", 409);
@@ -375,7 +378,7 @@ export async function fetchMiniprogramOrderDetailForSellable(
   input: OrderDetailInput,
 ) {
   const body = orderDetailBodySchema.parse(input);
-  const context = await getSellableContextOrThrow(db, body.id);
+  const context = await getSellableContextOrThrow(db, body.id, body.sign);
   const orderId = body.orderId ?? context.luckinOrderId;
 
   if (!orderId) {
@@ -415,8 +418,12 @@ async function getMiniprogramOrderUserOrThrow(db: D1Database, id: string) {
   return orderUser;
 }
 
-async function getSellableContextOrThrow(db: D1Database, id: string) {
-  const sellable = await findActiveMiniprogramSellableWithCard(db, id);
+async function getSellableContextOrThrow(
+  db: D1Database,
+  id: string,
+  sign: string,
+) {
+  const sellable = await findActiveMiniprogramSellableWithCard(db, id, sign);
   if (!sellable) {
     throw new MiniprogramOrderError("Not Found", 404);
   }
@@ -456,6 +463,7 @@ async function reconcileSellablesForCard(
       .prepare(
         `INSERT INTO miniprogram_sellable_products (
 					id,
+					sign,
 					coffee_card_id,
 					sellable_quantity,
 					status,
@@ -468,9 +476,14 @@ async function reconcileSellablesForCard(
 					ordered_at,
 					is_delete
 				)
-				VALUES (?, ?, 1, 'waiting', ?, NULL, NULL, NULL, NULL, NULL, NULL, 0)`,
+				VALUES (?, ?, ?, 1, 'waiting', ?, NULL, NULL, NULL, NULL, NULL, NULL, 0)`,
       )
-      .bind(generateMiniprogramSellableId(), card.id, card.orderUserId)
+      .bind(
+        generateMiniprogramSellableId(),
+        generateMiniprogramSellableSign(),
+        card.id,
+        card.orderUserId,
+      )
       .run();
   }
 
@@ -1036,7 +1049,11 @@ hono.post("/detail", async (c: AppContext) => {
     return body;
   }
 
-  const row = await findActiveMiniprogramSellableWithCard(c.env.DB, body.id);
+  const row = await findActiveMiniprogramSellableWithCard(
+    c.env.DB,
+    body.id,
+    body.sign,
+  );
   return row ? ok(c, row) : fail(c, "Not Found", 404);
 });
 

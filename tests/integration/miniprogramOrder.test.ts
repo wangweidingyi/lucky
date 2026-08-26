@@ -13,7 +13,7 @@ const miniprogramAesKey = "CJQjAc1hYieC4QYb";
 const miniprogramUid =
   "f931e729-4279-4d30-bdc5-0254af362e551787569733931-2926637-efAmj7k25Su8lEAGHeSrLLDaF7WCSl67RQEGsHnOQYYh3CdepZU4TszMDkSxpjkO";
 const miniprogramSellableIdPattern = /^[0-9A-Z_a-z-]{31}$/;
-const miniprogramSellableSign = "0123456789ABCDEFGHIJKLMNOPQRSTU";
+const wrongMiniprogramSellableSign = "WRONG0123456789ABCDEFGHIJKLMNOP";
 
 function encryptMiniprogramPayload(payload: Record<string, unknown>) {
   return CryptoJS.AES.encrypt(
@@ -98,6 +98,16 @@ async function createMiniprogramOrderUser() {
   return id;
 }
 
+async function firstSellableForCard(coffeeCardId: number) {
+  return env.DB.prepare(
+    `SELECT id, sign FROM miniprogram_sellable_products
+     WHERE coffee_card_id = ? AND is_delete = 0
+     LIMIT 1`,
+  )
+    .bind(coffeeCardId)
+    .first<{ id: string; sign: string }>();
+}
+
 async function requestPayload(request: Request) {
   const rawBody = new TextDecoder().decode(await request.arrayBuffer());
   const params = new URLSearchParams(rawBody);
@@ -177,13 +187,14 @@ describe("miniprogram coffee-card ordering", () => {
     );
 
     const sellables = await env.DB.prepare(
-      `SELECT id, coffee_card_id, sellable_quantity, status, order_user_id
+      `SELECT id, sign, coffee_card_id, sellable_quantity, status, order_user_id
 			 FROM miniprogram_sellable_products
 			 WHERE order_user_id = ? AND is_delete = 0`,
     )
       .bind(orderUserId)
       .all<{
         id: string;
+        sign: string;
         coffee_card_id: number;
         sellable_quantity: number;
         status: string;
@@ -192,6 +203,8 @@ describe("miniprogram coffee-card ordering", () => {
     expect(sellables.results).toHaveLength(3);
     for (const sellable of sellables.results) {
       expect(sellable.id).toMatch(miniprogramSellableIdPattern);
+      expect(sellable.sign).toMatch(miniprogramSellableIdPattern);
+      expect(sellable.sign).not.toBe(sellable.id);
       expect(sellable.coffee_card_id).toBe(result.cards[0].id);
       expect(sellable.sellable_quantity).toBe(1);
       expect(sellable.status).toBe("waiting");
@@ -277,13 +290,7 @@ describe("miniprogram coffee-card ordering", () => {
         }),
       { orderUserId },
     );
-    const sellable = await env.DB.prepare(
-      `SELECT id FROM miniprogram_sellable_products
-			 WHERE coffee_card_id = ? AND is_delete = 0
-			 LIMIT 1`,
-    )
-      .bind(syncResult.cards[0].id)
-      .first<{ id: string }>();
+    const sellable = await firstSellableForCard(syncResult.cards[0].id);
 
     const result = await fetchMiniprogramCardProductsForSellable(
       env.DB,
@@ -317,7 +324,7 @@ describe("miniprogram coffee-card ordering", () => {
       },
       {
         id: sellable?.id ?? "",
-        sign: miniprogramSellableSign,
+        sign: sellable?.sign ?? "",
         deptId: 613299,
         supportTakeout: 0,
       },
@@ -331,6 +338,46 @@ describe("miniprogram coffee-card ordering", () => {
         pictureUrl: "https://img.example.test/americano.png",
       }),
     ]);
+  });
+
+  it("rejects a correct sellable id with the wrong sign before calling Luckin", async () => {
+    const orderUserId = await createMiniprogramOrderUser();
+    const syncResult = await syncMiniprogramCoffeeCards(
+      env.DB,
+      async () =>
+        encryptedMiniprogramResponse({
+          code: 1,
+          content: {
+            planList: [
+              {
+                link: "/pages/index/menu?isCouponUse=true&couponNo=CKSIGN&couponType=2",
+                coffeeStockTitle: "验签卡",
+                stockNum: 1,
+              },
+            ],
+          },
+        }),
+      { orderUserId },
+    );
+    const sellable = await firstSellableForCard(syncResult.cards[0].id);
+    let luckinCalled = false;
+
+    await expect(
+      fetchMiniprogramCardProductsForSellable(
+        env.DB,
+        async () => {
+          luckinCalled = true;
+          return encryptedMiniprogramResponse({ code: 1, content: {} });
+        },
+        {
+          id: sellable?.id ?? "",
+          sign: wrongMiniprogramSellableSign,
+          deptId: 613299,
+          supportTakeout: 0,
+        },
+      ),
+    ).rejects.toMatchObject({ message: "Not Found", status: 404 });
+    expect(luckinCalled).toBe(false);
   });
 
   it("fetches mini-program product detail with coffee card context after a product is selected", async () => {
@@ -352,13 +399,7 @@ describe("miniprogram coffee-card ordering", () => {
         }),
       { orderUserId },
     );
-    const sellable = await env.DB.prepare(
-      `SELECT id FROM miniprogram_sellable_products
-			 WHERE coffee_card_id = ? AND is_delete = 0
-			 LIMIT 1`,
-    )
-      .bind(syncResult.cards[0].id)
-      .first<{ id: string }>();
+    const sellable = await firstSellableForCard(syncResult.cards[0].id);
 
     const result = await fetchMiniprogramProductDetailForSellable(
       env.DB,
@@ -404,7 +445,7 @@ describe("miniprogram coffee-card ordering", () => {
       },
       {
         id: sellable?.id ?? "",
-        sign: miniprogramSellableSign,
+        sign: sellable?.sign ?? "",
         deptId: 613299,
         productId: 5151,
         skuCode: "SP3571-00244",
@@ -446,13 +487,7 @@ describe("miniprogram coffee-card ordering", () => {
         }),
       { orderUserId },
     );
-    const sellable = await env.DB.prepare(
-      `SELECT id FROM miniprogram_sellable_products
-			 WHERE coffee_card_id = ? AND is_delete = 0
-			 LIMIT 1`,
-    )
-      .bind(syncResult.cards[0].id)
-      .first<{ id: string }>();
+    const sellable = await firstSellableForCard(syncResult.cards[0].id);
 
     const result = await switchMiniprogramProductAttributeForSellable(
       env.DB,
@@ -500,7 +535,7 @@ describe("miniprogram coffee-card ordering", () => {
       },
       {
         id: sellable?.id ?? "",
-        sign: miniprogramSellableSign,
+        sign: sellable?.sign ?? "",
         deptId: 613299,
         productId: 5151,
         skuCode: "SP3571-HOT",
@@ -547,13 +582,7 @@ describe("miniprogram coffee-card ordering", () => {
         }),
       { orderUserId },
     );
-    const sellable = await env.DB.prepare(
-      `SELECT id FROM miniprogram_sellable_products
-			 WHERE coffee_card_id = ? AND is_delete = 0
-			 LIMIT 1`,
-    )
-      .bind(syncResult.cards[0].id)
-      .first<{ id: string }>();
+    const sellable = await firstSellableForCard(syncResult.cards[0].id);
     const calls: Array<{ url: string; payload: Record<string, unknown> }> = [];
 
     const result = await createMiniprogramOrderForSellable(
@@ -608,7 +637,7 @@ describe("miniprogram coffee-card ordering", () => {
       },
       {
         id: sellable?.id ?? "",
-        sign: miniprogramSellableSign,
+        sign: sellable?.sign ?? "",
         deptId: 613299,
         longitude: 121.365,
         latitude: 31.171,
