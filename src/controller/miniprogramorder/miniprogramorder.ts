@@ -629,7 +629,7 @@ function toPreviewProduct(
     skuCode: input.product.skuCode,
     processTypeDetailList: input.product.processTypeDetailList,
     cafeKuId: card.cafeKuId,
-    couponNo: couponNoForCard(card),
+    couponNo: "",
     coffeeVoucherType: card.coffeeVoucherType,
   };
 }
@@ -695,9 +695,10 @@ function mapCreateProductList(
     productId: numberValue(product.productId) ?? input.product.productId,
     skuCode: stringValue(product.skuCode) ?? input.product.skuCode,
     amount: numberValue(product.amount) ?? input.product.amount,
-    cafeKuId: card.cafeKuId,
-    couponNo: couponNoForCard(card),
-    coffeeVoucherType: card.coffeeVoucherType,
+    cafeKuId: stringValue(product.cafeKuId) ?? card.cafeKuId,
+    couponNo: stringValue(product.couponNo) ?? "",
+    coffeeVoucherType:
+      numberValue(product.coffeeVoucherType) ?? card.coffeeVoucherType,
     processTypeDetailList: Array.isArray(product.processTypeDetailList)
       ? product.processTypeDetailList
       : [],
