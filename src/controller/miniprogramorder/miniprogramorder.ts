@@ -29,6 +29,8 @@ import {
   payPath,
   postLuckinJson,
   previewPath,
+  productDetailPath,
+  productPriceCalcPath,
   shopListPath,
   shopSearchPath,
   takeCodePath,
@@ -53,6 +55,26 @@ const syncCoffeeCardsBodySchema = z.object({
 const cardProductsBodySchema = miniprogramSellableIdBodySchema.extend({
   deptId: z.number().int().positive(),
   supportTakeout: z.number().int().min(0).max(1).optional().default(0),
+});
+
+const productDetailBodySchema = miniprogramSellableIdBodySchema.extend({
+  deptId: z.number().int().positive(),
+  productId: z.number().int().positive(),
+  skuCode: z.string().optional().default(""),
+  supportTakeout: z.number().int().min(0).max(1).optional().default(0),
+  position: z.number().int().nonnegative().optional().default(0),
+  processTypeDetailList: z.array(jsonValueSchema).optional().default([]),
+  planNumber: z.union([z.string(), z.number()]).optional().default(""),
+  discountSchemeNo: z.union([z.string(), z.number()]).optional().default(""),
+  classifyIndex: z.union([z.string(), z.number()]).optional().default(""),
+  benefitNo: z.union([z.string(), z.number()]).optional().default(""),
+});
+
+const productAttributeSwitchBodySchema = productDetailBodySchema.extend({
+  skuCode: z.string().min(1),
+  amount: z.number().int().positive().optional().default(1),
+  group: z.union([z.string(), z.number()]).optional().default(""),
+  attrOperationParam: z.record(jsonValueSchema),
 });
 
 const shopQueryBodySchema = miniprogramSellableIdBodySchema.extend({
@@ -88,6 +110,10 @@ const orderDetailBodySchema = miniprogramSellableIdBodySchema.extend({
 
 type SyncCoffeeCardsInput = z.infer<typeof syncCoffeeCardsBodySchema>;
 type CardProductsInput = z.infer<typeof cardProductsBodySchema>;
+type ProductDetailInput = z.infer<typeof productDetailBodySchema>;
+type ProductAttributeSwitchInput = z.infer<
+  typeof productAttributeSwitchBodySchema
+>;
 type ShopQueryInput = z.infer<typeof shopQueryBodySchema>;
 type CreateOrderInput = z.infer<typeof createOrderBodySchema>;
 type OrderDetailInput = z.infer<typeof orderDetailBodySchema>;
@@ -179,6 +205,66 @@ export async function fetchMiniprogramCardProductsForSellable(
     sellable: context,
     products,
     productCount: products.length,
+  };
+}
+
+export async function fetchMiniprogramProductDetailForSellable(
+  db: D1Database,
+  fetcher: typeof fetch,
+  input: ProductDetailInput,
+) {
+  const body = productDetailBodySchema.parse(input);
+  const context = await getSellableContextOrThrow(db, body.id);
+  const orderUser = await getMiniprogramOrderUserOrThrow(
+    db,
+    context.orderUserId,
+  );
+  const auth = authFromMiniprogramOrderUser(orderUser);
+  const response = await postLuckinJson(
+    fetcher,
+    productDetailPath,
+    auth,
+    buildProductDetailPayload(body, context.coffeeCard),
+    { sid: String(body.deptId) },
+  );
+  const content = extractLuckinContent(response, "product detail");
+
+  return {
+    sellable: context,
+    product: normalizeLuckinProductWithFallback(content, {
+      productId: body.productId,
+      skuCode: body.skuCode,
+    }),
+  };
+}
+
+export async function switchMiniprogramProductAttributeForSellable(
+  db: D1Database,
+  fetcher: typeof fetch,
+  input: ProductAttributeSwitchInput,
+) {
+  const body = productAttributeSwitchBodySchema.parse(input);
+  const context = await getSellableContextOrThrow(db, body.id);
+  const orderUser = await getMiniprogramOrderUserOrThrow(
+    db,
+    context.orderUserId,
+  );
+  const auth = authFromMiniprogramOrderUser(orderUser);
+  const response = await postLuckinJson(
+    fetcher,
+    productPriceCalcPath,
+    auth,
+    buildProductPriceCalcPayload(body),
+    { sid: String(body.deptId) },
+  );
+  const content = extractLuckinContent(response, "product price calc");
+
+  return {
+    sellable: context,
+    product: normalizeLuckinProductWithFallback(content, {
+      productId: body.productId,
+      skuCode: body.skuCode,
+    }),
   };
 }
 
@@ -569,6 +655,71 @@ function extractShopList(content: Record<string, unknown>) {
   return [...nearShop, ...common, ...other].filter(isRecord);
 }
 
+function buildProductDetailPayload(
+  input: ProductDetailInput,
+  card: MiniprogramCoffeeCardRow,
+) {
+  return {
+    deptId: input.deptId,
+    productId: input.productId,
+    supportTakeout: input.supportTakeout,
+    position: input.position,
+    skuCode: input.skuCode,
+    processTypeDetailList: input.processTypeDetailList,
+    planNumber: input.planNumber,
+    discountSchemeNo: input.discountSchemeNo,
+    classifyIndex: input.classifyIndex,
+    benefitNo: input.benefitNo,
+    tipsCountAllow: 1,
+    cardCouponParam: {
+      couponNo: couponNoForCard(card),
+      couponType: card.couponType || 2,
+    },
+  };
+}
+
+function buildProductPriceCalcPayload(input: ProductAttributeSwitchInput) {
+  return {
+    deptId: input.deptId,
+    productId: input.productId,
+    skuCode: input.skuCode,
+    processTypeDetailList: input.processTypeDetailList,
+    paymentAccountType: 1,
+    supportTakeout: input.supportTakeout,
+    group: input.group,
+    position: input.position,
+    recommendProductList: [],
+    amount: input.amount,
+    planNumber: input.planNumber,
+    discountSchemeNo: input.discountSchemeNo,
+    classifyIndex: input.classifyIndex,
+    benefitNo: input.benefitNo,
+    attrOperationParam: input.attrOperationParam,
+  };
+}
+
+function normalizeLuckinProductWithFallback(
+  product: Record<string, unknown>,
+  fallback: { productId: number; skuCode?: string | null },
+) {
+  const normalized = normalizeLuckinProduct({
+    ...product,
+    productId: numberValue(product.productId) ?? fallback.productId,
+    skuCode: stringValue(product.skuCode) ?? fallback.skuCode ?? "",
+    productName:
+      stringValue(product.productName) ??
+      stringValue(product.name) ??
+      stringValue(product.title) ??
+      "商品",
+  });
+
+  if (!normalized) {
+    throw new MiniprogramOrderError("Invalid Luckin product response", 502);
+  }
+
+  return normalized;
+}
+
 function buildPreviewPayload(
   input: CreateOrderInput,
   card: MiniprogramCoffeeCardRow,
@@ -912,6 +1063,38 @@ hono.post("/card-products", async (c: AppContext) => {
     return ok(
       c,
       await fetchMiniprogramCardProductsForSellable(c.env.DB, fetch, body),
+    );
+  } catch (error) {
+    return handleMiniprogramError(c, error);
+  }
+});
+
+hono.post("/product-detail", async (c: AppContext) => {
+  const body = await parseBody(c, productDetailBodySchema);
+  if (isResponse(body)) {
+    return body;
+  }
+
+  try {
+    return ok(
+      c,
+      await fetchMiniprogramProductDetailForSellable(c.env.DB, fetch, body),
+    );
+  } catch (error) {
+    return handleMiniprogramError(c, error);
+  }
+});
+
+hono.post("/product-price-calc", async (c: AppContext) => {
+  const body = await parseBody(c, productAttributeSwitchBodySchema);
+  if (isResponse(body)) {
+    return body;
+  }
+
+  try {
+    return ok(
+      c,
+      await switchMiniprogramProductAttributeForSellable(c.env.DB, fetch, body),
     );
   } catch (error) {
     return handleMiniprogramError(c, error);

@@ -5,6 +5,8 @@ import type { MiniprogramOrderUserRow } from "../../models/miniprogramOrderUsers
 export const miniprogramApiBaseUrl = "https://capi.lkcoffee.com";
 export const coffeeCardListPath = "/resource/m/promotion/v2/myself/list";
 export const cardCouponZonePath = "/resource/core/v3/product/cardCouponZone";
+export const productDetailPath = "/resource/core/v2/product/detail";
+export const productPriceCalcPath = "/resource/core/v2/product/priceCalc";
 export const shopListPath = "/resource/m/shop/shopList";
 export const shopSearchPath = "/resource/m/shop/list";
 export const previewPath = "/resource/core/v2/order/preview";

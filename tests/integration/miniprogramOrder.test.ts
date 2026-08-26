@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   createMiniprogramOrderForSellable,
   fetchMiniprogramCardProductsForSellable,
+  fetchMiniprogramProductDetailForSellable,
+  switchMiniprogramProductAttributeForSellable,
   syncMiniprogramCoffeeCards,
 } from "../../src/controller/miniprogramorder/miniprogramorder";
 
@@ -329,6 +331,200 @@ describe("miniprogram coffee-card ordering", () => {
         pictureUrl: "https://img.example.test/americano.png",
       }),
     ]);
+  });
+
+  it("fetches mini-program product detail with coffee card context after a product is selected", async () => {
+    const orderUserId = await createMiniprogramOrderUser();
+    const syncResult = await syncMiniprogramCoffeeCards(
+      env.DB,
+      async () =>
+        encryptedMiniprogramResponse({
+          code: 1,
+          content: {
+            planList: [
+              {
+                link: "/pages/index/menu?isCouponUse=true&couponNo=CKDETAIL&couponType=2",
+                coffeeStockTitle: "详情卡",
+                stockNum: 1,
+              },
+            ],
+          },
+        }),
+      { orderUserId },
+    );
+    const sellable = await env.DB.prepare(
+      `SELECT id FROM miniprogram_sellable_products
+			 WHERE coffee_card_id = ? AND is_delete = 0
+			 LIMIT 1`,
+    )
+      .bind(syncResult.cards[0].id)
+      .first<{ id: string }>();
+
+    const result = await fetchMiniprogramProductDetailForSellable(
+      env.DB,
+      async (input, init) => {
+        const request = new Request(input, init);
+        expect(request.method).toBe("POST");
+        expect(request.url).toBe(
+          "https://capi.lkcoffee.com/resource/core/v2/product/detail",
+        );
+        expect(await requestPayload(request)).toEqual({
+          deptId: 613299,
+          productId: 5151,
+          supportTakeout: 0,
+          position: 0,
+          skuCode: "SP3571-00244",
+          processTypeDetailList: [],
+          planNumber: "",
+          discountSchemeNo: "",
+          classifyIndex: "",
+          benefitNo: "",
+          tipsCountAllow: 1,
+          cardCouponParam: {
+            couponNo: "CKDETAIL",
+            couponType: 2,
+          },
+        });
+
+        return encryptedMiniprogramResponse({
+          code: 1,
+          content: {
+            productId: 5151,
+            skuCode: "SP3571-00244",
+            name: "标准美式",
+            productAttrs: [
+              {
+                attributeId: 101,
+                attributeName: "温度",
+                productSubAttrs: [{ attributeId: 201, attributeName: "冰", selected: 1 }],
+              },
+            ],
+          },
+        });
+      },
+      {
+        id: sellable?.id ?? "",
+        sign: miniprogramSellableSign,
+        deptId: 613299,
+        productId: 5151,
+        skuCode: "SP3571-00244",
+      },
+    );
+
+    expect(result.product).toEqual(
+      expect.objectContaining({
+        productId: 5151,
+        skuCode: "SP3571-00244",
+        productName: "标准美式",
+        productAttrs: [
+          {
+            attributeId: 101,
+            attributeName: "温度",
+            productSubAttrs: [{ attributeId: 201, attributeName: "冰", selected: 1 }],
+          },
+        ],
+      }),
+    );
+  });
+
+  it("switches mini-program product attributes through priceCalc", async () => {
+    const orderUserId = await createMiniprogramOrderUser();
+    const syncResult = await syncMiniprogramCoffeeCards(
+      env.DB,
+      async () =>
+        encryptedMiniprogramResponse({
+          code: 1,
+          content: {
+            planList: [
+              {
+                link: "/pages/index/menu?isCouponUse=true&couponNo=CKPRICE&couponType=2",
+                coffeeStockTitle: "属性卡",
+                stockNum: 1,
+              },
+            ],
+          },
+        }),
+      { orderUserId },
+    );
+    const sellable = await env.DB.prepare(
+      `SELECT id FROM miniprogram_sellable_products
+			 WHERE coffee_card_id = ? AND is_delete = 0
+			 LIMIT 1`,
+    )
+      .bind(syncResult.cards[0].id)
+      .first<{ id: string }>();
+
+    const result = await switchMiniprogramProductAttributeForSellable(
+      env.DB,
+      async (input, init) => {
+        const request = new Request(input, init);
+        expect(request.method).toBe("POST");
+        expect(request.url).toBe(
+          "https://capi.lkcoffee.com/resource/core/v2/product/priceCalc",
+        );
+        expect(await requestPayload(request)).toEqual({
+          deptId: 613299,
+          productId: 5151,
+          skuCode: "SP3571-HOT",
+          processTypeDetailList: [],
+          paymentAccountType: 1,
+          supportTakeout: 0,
+          group: "",
+          position: 0,
+          recommendProductList: [],
+          amount: 1,
+          planNumber: "",
+          discountSchemeNo: "",
+          classifyIndex: "",
+          benefitNo: "",
+          attrOperationParam: {
+            attributeId: 101,
+            subAttr: {
+              attributeId: 202,
+              attributeName: "热",
+              step: 1,
+              name: "热",
+            },
+          },
+        });
+
+        return encryptedMiniprogramResponse({
+          code: 1,
+          content: {
+            productId: 5151,
+            skuCode: "SP3571-HOT",
+            name: "标准美式",
+            processTypeDetailList: [{ type: "temperature", value: "hot" }],
+          },
+        });
+      },
+      {
+        id: sellable?.id ?? "",
+        sign: miniprogramSellableSign,
+        deptId: 613299,
+        productId: 5151,
+        skuCode: "SP3571-HOT",
+        processTypeDetailList: [],
+        attrOperationParam: {
+          attributeId: 101,
+          subAttr: {
+            attributeId: 202,
+            attributeName: "热",
+            step: 1,
+            name: "热",
+          },
+        },
+      },
+    );
+
+    expect(result.product).toEqual(
+      expect.objectContaining({
+        productId: 5151,
+        skuCode: "SP3571-HOT",
+        productName: "标准美式",
+        processTypeDetailList: [{ type: "temperature", value: "hot" }],
+      }),
+    );
   });
 
   it("previews, creates, completes zero-pay, and marks the miniprogram sellable row done", async () => {
