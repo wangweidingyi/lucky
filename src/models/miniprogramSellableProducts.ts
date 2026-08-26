@@ -2,6 +2,12 @@ import { z } from "zod";
 import { miniprogramCoffeeCardRowSchema } from "./miniprogramCoffeeCards";
 import { miniprogramIdSchema } from "./miniprogramOrderUsers";
 
+export const miniprogramSellableIdSchema = z
+  .string()
+  .regex(/^[0-9A-Z_a-z-]{31}$/);
+export const miniprogramSellableSignSchema = z
+  .string()
+  .regex(/^[0-9A-Z_a-z-]{31}$/);
 export const miniprogramSellableStatusSchema = z.enum([
   "waiting",
   "pending",
@@ -9,7 +15,7 @@ export const miniprogramSellableStatusSchema = z.enum([
 ]);
 
 export const miniprogramSellableRowSchema = z.object({
-  id: miniprogramIdSchema,
+  id: miniprogramSellableIdSchema,
   coffeeCardId: z.number().int(),
   sellableQuantity: z.number().int(),
   status: miniprogramSellableStatusSchema,
@@ -29,8 +35,8 @@ export const miniprogramSellableWithCardSchema =
   });
 
 export const miniprogramSellableIdBodySchema = z.object({
-  id: miniprogramIdSchema,
-  sign: z.string().regex(/^[a-zA-Z0-9]{10}$/),
+  id: miniprogramSellableIdSchema,
+  sign: miniprogramSellableSignSchema,
 });
 
 export type MiniprogramSellableRow = z.infer<

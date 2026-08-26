@@ -15,7 +15,7 @@ import {
   markMiniprogramSellableDone,
   miniprogramSellableIdBodySchema,
 } from "../../models/miniprogramSellableProducts";
-import { generateId } from "../../shared/id";
+import { generateMiniprogramSellableId } from "../../shared/id";
 import { fail, ok } from "../../shared/responses";
 import type { AppContext } from "../../types";
 import {
@@ -384,7 +384,7 @@ async function reconcileSellablesForCard(
 				)
 				VALUES (?, ?, 1, 'waiting', ?, NULL, NULL, NULL, NULL, NULL, NULL, 0)`,
       )
-      .bind(generateId(), card.id, card.orderUserId)
+      .bind(generateMiniprogramSellableId(), card.id, card.orderUserId)
       .run();
   }
 
