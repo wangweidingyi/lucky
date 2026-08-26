@@ -168,6 +168,17 @@ export async function postLuckinJson(
 
 export function extractLuckinContent(response: LuckinResponse, step: string) {
 	if (response.code !== 1) {
+		logMiniprogramError("third_party.business_error", {
+			step,
+			code: response.code,
+			busiCode: response.busiCode,
+			msg: response.msg,
+			status: response.status,
+			handler: response.handler,
+			loginState: response.loginState,
+			zeusId: response.zeusId,
+			content: summarizeBusinessContent(response.content),
+		});
 		throw new MiniprogramClientError(
 			response.msg || `Luckin ${step} request failed`,
 			502,
@@ -375,6 +386,34 @@ function summarizeRequestHeaders(headers: Record<string, string>) {
 		cookieKeys: getCookieKeys(headers.Cookie),
 		cookieHasUid: Boolean(extractCookieValue(headers.Cookie, "uid")),
 	};
+}
+
+function summarizeBusinessContent(content: unknown) {
+	if (!content || typeof content !== "object") {
+		return content ?? null;
+	}
+
+	if (Array.isArray(content)) {
+		return { type: "array", length: content.length };
+	}
+
+	const record = content as Record<string, unknown>;
+	return Object.fromEntries(
+		Object.entries(record)
+			.filter(([key]) =>
+				[
+					"code",
+					"msg",
+					"message",
+					"desc",
+					"errorMsg",
+					"status",
+					"handler",
+					"busiCode",
+				].includes(key),
+			)
+			.slice(0, 12),
+	);
 }
 
 function logMiniprogram(step: string, data: Record<string, unknown>) {
