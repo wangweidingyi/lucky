@@ -257,7 +257,7 @@ export async function switchMiniprogramProductAttributeForSellable(
     fetcher,
     productPriceCalcPath,
     auth,
-    buildProductPriceCalcPayload(body),
+    buildProductPriceCalcPayload(body, context.coffeeCard),
     { sid: String(body.deptId) },
   );
   const content = extractLuckinContent(response, "product price calc");
@@ -691,7 +691,10 @@ function buildProductDetailPayload(
   };
 }
 
-function buildProductPriceCalcPayload(input: ProductAttributeSwitchInput) {
+function buildProductPriceCalcPayload(
+  input: ProductAttributeSwitchInput,
+  card: MiniprogramCoffeeCardRow,
+) {
   return {
     deptId: input.deptId,
     productId: input.productId,
@@ -708,6 +711,10 @@ function buildProductPriceCalcPayload(input: ProductAttributeSwitchInput) {
     classifyIndex: input.classifyIndex,
     benefitNo: input.benefitNo,
     attrOperationParam: input.attrOperationParam,
+    cardCouponParam: {
+      couponNo: couponNoForCard(card),
+      couponType: card.couponType || 2,
+    },
   };
 }
 

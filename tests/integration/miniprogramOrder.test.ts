@@ -437,7 +437,9 @@ describe("miniprogram coffee-card ordering", () => {
               {
                 attributeId: 101,
                 attributeName: "温度",
-                productSubAttrs: [{ attributeId: 201, attributeName: "冰", selected: 1 }],
+                productSubAttrs: [
+                  { attributeId: 201, attributeName: "冰", selected: 1 },
+                ],
               },
             ],
           },
@@ -461,7 +463,9 @@ describe("miniprogram coffee-card ordering", () => {
           {
             attributeId: 101,
             attributeName: "温度",
-            productSubAttrs: [{ attributeId: 201, attributeName: "冰", selected: 1 }],
+            productSubAttrs: [
+              { attributeId: 201, attributeName: "冰", selected: 1 },
+            ],
           },
         ],
       }),
@@ -516,10 +520,15 @@ describe("miniprogram coffee-card ordering", () => {
             attributeId: 101,
             subAttr: {
               attributeId: 202,
+              operation: 3,
               attributeName: "热",
               step: 1,
               name: "热",
             },
+          },
+          cardCouponParam: {
+            couponNo: "CKPRICE",
+            couponType: 2,
           },
         });
 
@@ -544,6 +553,7 @@ describe("miniprogram coffee-card ordering", () => {
           attributeId: 101,
           subAttr: {
             attributeId: 202,
+            operation: 3,
             attributeName: "热",
             step: 1,
             name: "热",
