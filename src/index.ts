@@ -8,6 +8,7 @@ import { orderRouter } from "./controller/order/order";
 import { xyOrderRouter } from "./controller/xyorder/xyorder";
 import { lkadminRouter } from "./controller/lkadmin/lkadmin";
 import { appLogger } from "./shared/logger";
+import { miniprogramOrderRouter } from "./controller/miniprogramorder/miniprogramorder";
 
 // Start a Hono app
 const app = new Hono<{ Bindings: Env }>();
@@ -72,6 +73,7 @@ const openapi = fromHono(app, {
 
 openapi.route("/order", orderRouter);
 openapi.route("/xy/order", xyOrderRouter);
+openapi.route("/miniprogramorder", miniprogramOrderRouter);
 openapi.route("/lkadmin", lkadminRouter);
 
 app.get("/", (c) => {
