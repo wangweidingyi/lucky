@@ -19,10 +19,9 @@ import {
 import { generateId } from "../../shared/id";
 import { fail, ok } from "../../shared/responses";
 import type { AppContext } from "../../types";
+import { MiniprogramClientError } from "../miniprogramorder/miniprogramClient";
 import {
-	MiniprogramClientError,
-} from "../miniprogramorder/miniprogramClient";
-import {
+	generateMiniprogramSellablesForCard,
 	MiniprogramOrderError,
 	syncMiniprogramCoffeeCards,
 } from "../miniprogramorder/miniprogramorder";
@@ -198,13 +197,35 @@ router.post("/coffee-cards/list", async (c: AppContext) => {
 });
 
 router.post("/coffee-cards/sync", async (c: AppContext) => {
-	const body = await parseBody(c, z.object({ orderUserId: miniprogramIdSchema }));
+	const body = await parseBody(
+		c,
+		z.object({ orderUserId: miniprogramIdSchema }),
+	);
 	if (isResponse(body)) {
 		return body;
 	}
 
 	try {
 		return ok(c, await syncMiniprogramCoffeeCards(c.env.DB, fetch, body));
+	} catch (error) {
+		return handleMiniprogramError(c, error);
+	}
+});
+
+router.post("/coffee-cards/generate-sellables", async (c: AppContext) => {
+	const body = await parseBody(
+		c,
+		z.object({
+			id: z.number().int().positive(),
+			force: z.boolean().optional().default(false),
+		}),
+	);
+	if (isResponse(body)) {
+		return body;
+	}
+
+	try {
+		return ok(c, await generateMiniprogramSellablesForCard(c.env.DB, body));
 	} catch (error) {
 		return handleMiniprogramError(c, error);
 	}
@@ -244,7 +265,10 @@ router.post("/sellable-products/list", async (c: AppContext) => {
 });
 
 router.post("/coffee-cards/read", async (c: AppContext) => {
-	const body = await parseBody(c, z.object({ id: z.number().int().positive() }));
+	const body = await parseBody(
+		c,
+		z.object({ id: z.number().int().positive() }),
+	);
 	if (isResponse(body)) {
 		return body;
 	}
@@ -257,7 +281,9 @@ router.post("/coffee-cards/read", async (c: AppContext) => {
 		.bind(body.id)
 		.first<Parameters<typeof deserializeMiniprogramCoffeeCard>[0]>();
 
-	return row ? ok(c, deserializeMiniprogramCoffeeCard(row)) : fail(c, "Not Found", 404);
+	return row
+		? ok(c, deserializeMiniprogramCoffeeCard(row))
+		: fail(c, "Not Found", 404);
 });
 
 async function getOrderUser(

@@ -1,4 +1,4 @@
-import { SELF } from "cloudflare:test";
+import { SELF, env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 const adminToken = "lkadmin-dev-token";
@@ -81,5 +81,104 @@ describe("miniprogram admin API", () => {
 
 		expect(rows.response.status).toBe(200);
 		expect(Array.isArray(rows.body.result)).toBe(true);
+	});
+
+	it("requires confirmation before regenerating mismatched card sellable rows", async () => {
+		const orderUserId = "AdmCard001";
+		const cardId = 987654;
+
+		await env.DB.prepare(
+			`INSERT INTO miniprogram_order_users (
+				id,
+				nickname,
+				status,
+				uid,
+				miniprogram_version,
+				aes_key,
+				base_url,
+				is_delete
+			)
+			VALUES (?, 'card admin', 'enabled', 'uid-card-admin', '5587', 'CJQjAc1hYieC4QYb', 'https://capi.lkcoffee.com', 0)`,
+		)
+			.bind(orderUserId)
+			.run();
+
+		await env.DB.prepare(
+			`INSERT INTO miniprogram_coffee_cards (
+				id,
+				order_user_id,
+				cafe_ku_id,
+				coupon_no,
+				coupon_type,
+				coffee_voucher_type,
+				card_name,
+				usable_quantity,
+				generated_sellable_count,
+				raw,
+				is_delete
+			)
+			VALUES (?, ?, 'CK-ADMIN-GEN', 'CK-ADMIN-GEN', 2, 0, '待生成卡券', 2, 0, '{}', 0)`,
+		)
+			.bind(cardId, orderUserId)
+			.run();
+
+		const withoutConfirmation = await post<{
+			errors: Array<{ message: string }>;
+		}>("/lkadmin/miniprogram/coffee-cards/generate-sellables", { id: cardId });
+
+		expect(withoutConfirmation.response.status).toBe(409);
+		expect(withoutConfirmation.body.errors[0].message).toContain(
+			"可售记录数量不一致",
+		);
+
+		const generated = await post<{
+			result: {
+				card: { id: number; generatedSellableCount: number };
+				sellables: Array<{ id: string; sign: string; status: string }>;
+				usableQuantity: number;
+				activeSellableCount: number;
+				regenerated: boolean;
+			};
+		}>("/lkadmin/miniprogram/coffee-cards/generate-sellables", {
+			id: cardId,
+			force: true,
+		});
+
+		expect(generated.response.status).toBe(200);
+		expect(generated.body.result).toEqual(
+			expect.objectContaining({
+				usableQuantity: 2,
+				activeSellableCount: 2,
+				regenerated: true,
+			}),
+		);
+		expect(generated.body.result.card.generatedSellableCount).toBe(2);
+		expect(generated.body.result.sellables).toHaveLength(2);
+		for (const sellable of generated.body.result.sellables) {
+			expect(sellable.id).toMatch(/^[0-9A-Z_a-z-]{31}$/);
+			expect(sellable.sign).toMatch(/^[0-9A-Z_a-z-]{31}$/);
+			expect(sellable.status).toBe("waiting");
+		}
+
+		const noOp = await post<{
+			result: {
+				activeSellableCount: number;
+				regenerated: boolean;
+				sellables: Array<{ id: string }>;
+			};
+		}>("/lkadmin/miniprogram/coffee-cards/generate-sellables", {
+			id: cardId,
+		});
+
+		expect(noOp.response.status).toBe(200);
+		expect(noOp.body.result).toEqual(
+			expect.objectContaining({
+				activeSellableCount: 2,
+				regenerated: false,
+			}),
+		);
+		expect(noOp.body.result.sellables.map((sellable) => sellable.id)).toEqual(
+			generated.body.result.sellables.map((sellable) => sellable.id),
+		);
 	});
 });

@@ -11,6 +11,7 @@ import {
   miniprogramIdSchema,
 } from "../../models/miniprogramOrderUsers";
 import {
+  deserializeMiniprogramSellable,
   findActiveMiniprogramSellableWithCard,
   markMiniprogramSellableDone,
   miniprogramSellableIdBodySchema,
@@ -121,6 +122,13 @@ type ShopQueryInput = z.infer<typeof shopQueryBodySchema>;
 type CreateOrderInput = z.infer<typeof createOrderBodySchema>;
 type OrderDetailInput = z.infer<typeof orderDetailBodySchema>;
 
+const generateSellablesBodySchema = z.object({
+  id: z.number().int().positive(),
+  force: z.boolean().optional().default(false),
+});
+
+type GenerateSellablesInput = z.infer<typeof generateSellablesBodySchema>;
+
 export class MiniprogramOrderError extends Error {
   constructor(
     message: string,
@@ -157,7 +165,7 @@ export async function syncMiniprogramCoffeeCards(
       continue;
     }
 
-    const generatedCount = await reconcileSellablesForCard(db, card);
+    const generatedCount = await countActiveSellablesForCard(db, card.id);
     await db
       .prepare(
         `UPDATE miniprogram_coffee_cards
@@ -178,6 +186,72 @@ export async function syncMiniprogramCoffeeCards(
     syncedCount: cards.length,
     rawCount: rawCards.length,
     generatedSellableCount,
+  };
+}
+
+export async function generateMiniprogramSellablesForCard(
+  db: D1Database,
+  input: GenerateSellablesInput,
+) {
+  const body = generateSellablesBodySchema.parse(input);
+  const card = await getMiniprogramCoffeeCardById(db, body.id);
+  if (!card) {
+    throw new MiniprogramOrderError("Coffee card not found", 404);
+  }
+
+  const usableQuantity = Math.max(0, Math.floor(card.usableQuantity));
+  const activeSellables = await listActiveSellablesForCard(db, card.id);
+  const activeSellableCount = activeSellables.length;
+
+  if (activeSellableCount === usableQuantity && !body.force) {
+    const nextCard = await updateCardGeneratedSellableCount(
+      db,
+      card.id,
+      activeSellableCount,
+    );
+
+    return {
+      card: nextCard ?? card,
+      sellables: activeSellables,
+      usableQuantity,
+      activeSellableCount,
+      regenerated: false,
+    };
+  }
+
+  if (activeSellableCount !== usableQuantity && !body.force) {
+    throw new MiniprogramOrderError(
+      `可售记录数量不一致：卡券剩余 ${usableQuantity}，当前活跃库存 ${activeSellableCount}`,
+      409,
+    );
+  }
+
+  await db
+    .prepare(
+      `UPDATE miniprogram_sellable_products
+			 SET is_delete = 1
+			 WHERE coffee_card_id = ? AND is_delete = 0 AND status IN ('waiting', 'pending')`,
+    )
+    .bind(card.id)
+    .run();
+
+  for (let index = 0; index < usableQuantity; index += 1) {
+    await insertSellableForCard(db, card);
+  }
+
+  const sellables = await listActiveSellablesForCard(db, card.id);
+  const nextCard = await updateCardGeneratedSellableCount(
+    db,
+    card.id,
+    sellables.length,
+  );
+
+  return {
+    card: nextCard ?? card,
+    sellables,
+    usableQuantity,
+    activeSellableCount: sellables.length,
+    regenerated: true,
   };
 }
 
@@ -444,50 +518,84 @@ async function getMiniprogramCoffeeCardById(db: D1Database, id: number) {
   return row ? deserializeMiniprogramCoffeeCard(row) : null;
 }
 
-async function reconcileSellablesForCard(
+async function insertSellableForCard(
   db: D1Database,
-  card: MiniprogramCoffeeCardRow,
+  card: Pick<MiniprogramCoffeeCardRow, "id" | "orderUserId">,
 ) {
   await db
     .prepare(
-      `UPDATE miniprogram_sellable_products
-			 SET is_delete = 1
-			 WHERE coffee_card_id = ? AND is_delete = 0 AND status IN ('waiting', 'pending')`,
+      `INSERT INTO miniprogram_sellable_products (
+				id,
+				sign,
+				coffee_card_id,
+				sellable_quantity,
+				status,
+				order_user_id,
+				third_party_remark_id,
+				luckin_order_id,
+				selected_product_id,
+				selected_sku_code,
+				selected_product_name,
+				ordered_at,
+				is_delete
+			)
+			VALUES (?, ?, ?, 1, 'waiting', ?, NULL, NULL, NULL, NULL, NULL, NULL, 0)`,
     )
-    .bind(card.id)
+    .bind(
+      generateMiniprogramSellableId(),
+      generateMiniprogramSellableSign(),
+      card.id,
+      card.orderUserId,
+    )
+    .run();
+}
+
+async function listActiveSellablesForCard(db: D1Database, cardId: number) {
+  const result = await db
+    .prepare(
+      `SELECT *
+			 FROM miniprogram_sellable_products
+			 WHERE coffee_card_id = ?
+			   AND is_delete = 0
+			   AND status IN ('waiting', 'pending')
+			 ORDER BY id ASC`,
+    )
+    .bind(cardId)
+    .all<Parameters<typeof deserializeMiniprogramSellable>[0]>();
+
+  return result.results.map(deserializeMiniprogramSellable);
+}
+
+async function countActiveSellablesForCard(db: D1Database, cardId: number) {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS count
+			 FROM miniprogram_sellable_products
+			 WHERE coffee_card_id = ?
+			   AND is_delete = 0
+			   AND status IN ('waiting', 'pending')`,
+    )
+    .bind(cardId)
+    .first<{ count: number }>();
+
+  return row?.count ?? 0;
+}
+
+async function updateCardGeneratedSellableCount(
+  db: D1Database,
+  cardId: number,
+  count: number,
+) {
+  await db
+    .prepare(
+      `UPDATE miniprogram_coffee_cards
+			 SET generated_sellable_count = ?
+			 WHERE id = ? AND is_delete = 0`,
+    )
+    .bind(count, cardId)
     .run();
 
-  const count = Math.max(0, Math.floor(card.usableQuantity));
-  for (let index = 0; index < count; index += 1) {
-    await db
-      .prepare(
-        `INSERT INTO miniprogram_sellable_products (
-					id,
-					sign,
-					coffee_card_id,
-					sellable_quantity,
-					status,
-					order_user_id,
-					third_party_remark_id,
-					luckin_order_id,
-					selected_product_id,
-					selected_sku_code,
-					selected_product_name,
-					ordered_at,
-					is_delete
-				)
-				VALUES (?, ?, ?, 1, 'waiting', ?, NULL, NULL, NULL, NULL, NULL, NULL, 0)`,
-      )
-      .bind(
-        generateMiniprogramSellableId(),
-        generateMiniprogramSellableSign(),
-        card.id,
-        card.orderUserId,
-      )
-      .run();
-  }
-
-  return count;
+  return getMiniprogramCoffeeCardById(db, cardId);
 }
 
 function extractCoffeeCards(content: Record<string, unknown>) {
