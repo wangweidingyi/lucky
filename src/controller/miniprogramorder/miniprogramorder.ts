@@ -91,13 +91,15 @@ const shopQueryBodySchema = miniprogramSellableIdBodySchema.extend({
   pageSize: z.number().int().positive().max(50).optional().default(10),
 });
 
-const selectedProductSchema = z.object({
-  productId: z.number().int().positive(),
-  skuCode: z.string().min(1),
-  productName: z.string().min(1).optional(),
-  amount: z.number().int().positive().optional().default(1),
-  processTypeDetailList: z.array(jsonValueSchema).optional().default([]),
-});
+const selectedProductSchema = z
+  .object({
+    productId: z.number().int().positive(),
+    skuCode: z.string().min(1),
+    productName: z.string().min(1).optional(),
+    amount: z.number().int().positive().optional().default(1),
+    processTypeDetailList: z.array(jsonValueSchema).optional().default([]),
+  })
+  .passthrough();
 
 const createOrderBodySchema = miniprogramSellableIdBodySchema.extend({
   deptId: z.number().int().positive(),
@@ -937,10 +939,7 @@ function normalizeLuckinProductWithFallback(
   return normalized;
 }
 
-function buildPreviewPayload(
-  input: CreateOrderInput,
-  auth: MiniprogramAuth,
-) {
+function buildPreviewPayload(input: CreateOrderInput, auth: MiniprogramAuth) {
   return {
     shopAbTest: true,
     cityId: input.cityId,
@@ -980,9 +979,7 @@ function buildPreviewPayload(
   };
 }
 
-function toPreviewProduct(
-  input: CreateOrderInput,
-) {
+function toPreviewProduct(input: CreateOrderInput) {
   return {
     indexId: 1,
     amount: input.product.amount,
@@ -1062,44 +1059,58 @@ function mapCreateProductList(
   coffeeStoreMatch: Record<string, unknown>,
   card: MiniprogramCoffeeCardRow,
 ) {
-  const previewProductDetailList = getProductDetailList(preview);
-  if (previewProductDetailList.length) {
-    return mapCreateProducts(input, previewProductDetailList, card);
-  }
+  const cardProduct =
+    findMatchingProduct(getProductDetailList(preview), input) ??
+    findMatchingProduct(getMatchedProductList(coffeeStoreMatch), input);
 
-  const matchedProductList = getMatchedProductList(coffeeStoreMatch);
-  if (matchedProductList.length) {
-    return mapCreateProducts(input, matchedProductList, card);
-  }
-
-  return [toPreviewProduct(input)];
+  return [mapCreateProduct(input, cardProduct, card)];
 }
 
-function mapCreateProducts(
+function mapCreateProduct(
   input: CreateOrderInput,
-  products: Record<string, unknown>[],
+  cardProduct: Record<string, unknown> | null,
   card: MiniprogramCoffeeCardRow,
 ) {
-  return products.map((product, index) =>
+  const selectedProduct = input.product as Record<string, unknown>;
+  const selectedProcessTypeDetailList = Array.isArray(
+    selectedProduct.processTypeDetailList,
+  )
+    ? selectedProduct.processTypeDetailList
+    : [];
+  const cardProcessTypeDetailList =
+    cardProduct && Array.isArray(cardProduct.processTypeDetailList)
+      ? cardProduct.processTypeDetailList
+      : [];
+  const supportChangeProcessType =
+    numberValue(selectedProduct.supportChangeProcessType) ??
+    numberValue(cardProduct?.supportChangeProcessType) ??
+    0;
+
+  const base = withOptionalProductFields(
     withOptionalProductFields(
       {
-        indexId: numberValue(product.indexId) ?? index + 1,
-        productId: numberValue(product.productId) ?? input.product.productId,
-        skuCode: stringValue(product.skuCode) ?? input.product.skuCode,
-        amount: numberValue(product.amount) ?? input.product.amount,
-        cafeKuId: stringValue(product.cafeKuId) ?? card.cafeKuId,
-        couponNo: stringValue(product.couponNo) ?? "",
+        indexId:
+          numberValue(selectedProduct.indexId) ??
+          numberValue(cardProduct?.indexId) ??
+          1,
+        productId: input.product.productId,
+        skuCode: input.product.skuCode,
+        amount: input.product.amount,
+        cafeKuId: stringValue(cardProduct?.cafeKuId) ?? card.cafeKuId,
+        couponNo: stringValue(cardProduct?.couponNo) ?? "",
         coffeeVoucherType:
-          numberValue(product.coffeeVoucherType) ?? card.coffeeVoucherType,
-        processTypeDetailList: Array.isArray(product.processTypeDetailList)
-          ? product.processTypeDetailList
-          : [],
-        supportChangeProcessType:
-          numberValue(product.supportChangeProcessType) ?? 0,
+          numberValue(cardProduct?.coffeeVoucherType) ?? card.coffeeVoucherType,
+        processTypeDetailList: selectedProcessTypeDetailList.length
+          ? selectedProcessTypeDetailList
+          : cardProcessTypeDetailList,
+        supportChangeProcessType,
       },
-      product,
+      cardProduct ?? {},
     ),
+    selectedProduct,
   );
+
+  return base;
 }
 
 function withOptionalProductFields(
@@ -1124,6 +1135,31 @@ function withOptionalProductFields(
   }
 
   return base;
+}
+
+function findMatchingProduct(
+  products: Record<string, unknown>[],
+  input: CreateOrderInput,
+) {
+  const productId = String(input.product.productId);
+  const indexId = String(numberValue(input.product.indexId) ?? 1);
+  const exact = products.find(
+    (product) =>
+      String(numberValue(product.indexId) ?? "") === indexId &&
+      String(numberValue(product.productId) ?? "") === productId,
+  );
+
+  if (exact) {
+    return exact;
+  }
+
+  return (
+    products.find(
+      (product) => String(numberValue(product.productId) ?? "") === productId,
+    ) ??
+    products[0] ??
+    null
+  );
 }
 
 function getActualCafeKuId(createPayload: Record<string, unknown>) {

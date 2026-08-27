@@ -735,9 +735,7 @@ describe("miniprogram coffee-card ordering", () => {
           });
         }
 
-        if (
-          request.url.endsWith("/resource/core/v2/order/coffeestore/match")
-        ) {
+        if (request.url.endsWith("/resource/core/v2/order/coffeestore/match")) {
           return encryptedMiniprogramResponse({
             code: 1,
             content: {
@@ -878,5 +876,122 @@ describe("miniprogram coffee-card ordering", () => {
       actual_cafe_ku_id: "CK003",
       actual_coffee_card_id: syncResult.cards[0].id,
     });
+  });
+
+  it("keeps the selected sku and processing attributes when applying the preview-selected coffee card", async () => {
+    const orderUserId = await createMiniprogramOrderUser();
+    const syncResult = await syncMiniprogramCoffeeCards(
+      env.DB,
+      async () =>
+        encryptedMiniprogramResponse({
+          code: 1,
+          content: {
+            planList: [
+              {
+                link: "/pages/index/menu?isCouponUse=true&couponNo=CKATTR&couponType=2",
+                coffeeVoucherType: 1,
+                coffeeStockTitle: "属性卡",
+                stockNum: 1,
+              },
+            ],
+          },
+        }),
+      { orderUserId },
+    );
+    const sellable = await firstGeneratedSellableForCard(
+      syncResult.cards[0].id,
+    );
+    const calls: Array<{ url: string; payload: Record<string, unknown> }> = [];
+
+    await createMiniprogramOrderForSellable(
+      env.DB,
+      async (input, init) => {
+        const request = new Request(input, init);
+        const payload = await requestPayload(request);
+        calls.push({ url: request.url, payload });
+
+        if (request.url.endsWith("/resource/core/v2/order/preview")) {
+          return encryptedMiniprogramResponse({
+            code: 1,
+            content: {
+              discountPrice: 0,
+              productDetailList: [
+                {
+                  indexId: 1,
+                  productId: 5790,
+                  skuCode: "SP4210-00004",
+                  amount: 1,
+                  cafeKuId: "CKATTR",
+                  couponNo: "",
+                  coffeeVoucherType: 1,
+                  processTypeDetailList: [
+                    { processTypeId: 10, optionId: 100, optionName: "冰" },
+                  ],
+                  supportChangeProcessType: 1,
+                },
+              ],
+            },
+          });
+        }
+
+        if (request.url.endsWith("/resource/core/v2/order/coffeestore/match")) {
+          return encryptedMiniprogramResponse({
+            code: 1,
+            content: { productList: [] },
+          });
+        }
+
+        if (request.url.endsWith("/resource/core/v1/order/create")) {
+          return encryptedMiniprogramResponse({
+            code: 1,
+            content: {
+              orderId: "ORDER-ATTR",
+              forwardPage: "pay",
+              orderRedeem: {},
+              videoPayment: {},
+            },
+          });
+        }
+
+        return encryptedMiniprogramResponse({
+          code: 1,
+          content: {
+            payStatus: 1,
+            needPay: false,
+            desc: "支付成功",
+          },
+        });
+      },
+      {
+        id: sellable?.id ?? "",
+        sign: sellable?.sign ?? "",
+        deptId: 613299,
+        longitude: 121.365,
+        latitude: 31.171,
+        product: {
+          productId: 5790,
+          skuCode: "SP4210-HOT",
+          productName: "热拿铁",
+          amount: 1,
+          processTypeDetailList: [
+            { processTypeId: 10, optionId: 101, optionName: "热" },
+          ],
+        },
+      },
+    );
+
+    expect(calls[2].payload.productList).toEqual([
+      expect.objectContaining({
+        productId: 5790,
+        skuCode: "SP4210-HOT",
+        cafeKuId: "CKATTR",
+        couponNo: "",
+        coffeeVoucherType: 1,
+        processTypeDetailList: [
+          { processTypeId: 10, optionId: 101, optionName: "热" },
+        ],
+        supportChangeProcessType: 1,
+      }),
+    ]);
   });
 });
