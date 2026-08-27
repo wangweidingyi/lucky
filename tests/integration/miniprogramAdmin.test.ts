@@ -83,7 +83,7 @@ describe("miniprogram admin API", () => {
 		expect(Array.isArray(rows.body.result)).toBe(true);
 	});
 
-	it("requires confirmation before regenerating mismatched card sellable rows", async () => {
+	it("automatically reconciles card sellable rows to the remaining card uses", async () => {
 		const orderUserId = "AdmCard001";
 		const cardId = 987654;
 
@@ -122,15 +122,6 @@ describe("miniprogram admin API", () => {
 			.bind(cardId, orderUserId)
 			.run();
 
-		const withoutConfirmation = await post<{
-			errors: Array<{ message: string }>;
-		}>("/lkadmin/miniprogram/coffee-cards/generate-sellables", { id: cardId });
-
-		expect(withoutConfirmation.response.status).toBe(409);
-		expect(withoutConfirmation.body.errors[0].message).toContain(
-			"可售记录数量不一致",
-		);
-
 		const generated = await post<{
 			result: {
 				card: { id: number; generatedSellableCount: number };
@@ -139,10 +130,7 @@ describe("miniprogram admin API", () => {
 				activeSellableCount: number;
 				regenerated: boolean;
 			};
-		}>("/lkadmin/miniprogram/coffee-cards/generate-sellables", {
-			id: cardId,
-			force: true,
-		});
+		}>("/lkadmin/miniprogram/coffee-cards/generate-sellables", { id: cardId });
 
 		expect(generated.response.status).toBe(200);
 		expect(generated.body.result).toEqual(

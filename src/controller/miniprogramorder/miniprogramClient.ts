@@ -10,6 +10,7 @@ export const productPriceCalcPath = "/resource/core/v2/product/priceCalc";
 export const shopListPath = "/resource/m/shop/shopList";
 export const shopSearchPath = "/resource/m/shop/list";
 export const previewPath = "/resource/core/v2/order/preview";
+export const coffeeStoreMatchPath = "/resource/core/v2/order/coffeestore/match";
 export const createPath = "/resource/core/v1/order/create";
 export const payPath = "/resource/core/v2/pay/topay";
 export const orderDetailPath = "/resource/core/v1/order/detail";

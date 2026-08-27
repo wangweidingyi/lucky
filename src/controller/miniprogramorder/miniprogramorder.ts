@@ -26,6 +26,7 @@ import {
   authFromMiniprogramOrderUser,
   cardCouponZonePath,
   coffeeCardListPath,
+  coffeeStoreMatchPath,
   createPath,
   extractLuckinContent,
   MiniprogramClientError,
@@ -200,7 +201,7 @@ export async function generateMiniprogramSellablesForCard(
   }
 
   const usableQuantity = Math.max(0, Math.floor(card.usableQuantity));
-  const activeSellables = await listActiveSellablesForCard(db, card.id);
+  let activeSellables = await listActiveSellablesForCard(db, card.id);
   const activeSellableCount = activeSellables.length;
 
   if (activeSellableCount === usableQuantity && !body.force) {
@@ -219,24 +220,35 @@ export async function generateMiniprogramSellablesForCard(
     };
   }
 
-  if (activeSellableCount !== usableQuantity && !body.force) {
-    throw new MiniprogramOrderError(
-      `可售记录数量不一致：卡券剩余 ${usableQuantity}，当前活跃库存 ${activeSellableCount}`,
-      409,
+  if (activeSellableCount > usableQuantity) {
+    const overflow = activeSellableCount - usableQuantity;
+    const deletedCount = await deleteWaitingSellablesForCard(
+      db,
+      card.id,
+      overflow,
     );
+
+    activeSellables = await listActiveSellablesForCard(db, card.id);
+    if (activeSellables.length > usableQuantity) {
+      throw new MiniprogramOrderError(
+        `可售记录数量不一致：卡券剩余 ${usableQuantity}，当前活跃库存 ${activeSellables.length}，其中 ${overflow - deletedCount} 条无法自动删除`,
+        409,
+      );
+    }
   }
 
-  await db
-    .prepare(
-      `UPDATE miniprogram_sellable_products
-			 SET is_delete = 1
-			 WHERE coffee_card_id = ? AND is_delete = 0 AND status IN ('waiting', 'pending')`,
-    )
-    .bind(card.id)
-    .run();
+  if (activeSellables.length < usableQuantity) {
+    const needCreate = usableQuantity - activeSellables.length;
+    for (let index = 0; index < needCreate; index += 1) {
+      await insertSellableForCard(db, card);
+    }
+  }
 
-  for (let index = 0; index < usableQuantity; index += 1) {
-    await insertSellableForCard(db, card);
+  if (body.force && activeSellables.length > usableQuantity) {
+    throw new MiniprogramOrderError(
+      `可售记录数量不一致：卡券剩余 ${usableQuantity}，当前活跃库存 ${activeSellables.length}`,
+      409,
+    );
   }
 
   const sellables = await listActiveSellablesForCard(db, card.id);
@@ -251,7 +263,7 @@ export async function generateMiniprogramSellablesForCard(
     sellables,
     usableQuantity,
     activeSellableCount: sellables.length,
-    regenerated: true,
+    regenerated: sellables.length !== activeSellableCount,
   };
 }
 
@@ -420,9 +432,21 @@ export async function createMiniprogramOrderForSellable(
   const preview = extractLuckinContent(previewResponse, "preview");
   assertZeroPayPreview(preview);
 
+  const coffeeStoreMatchResponse = await postLuckinJson(
+    fetcher,
+    coffeeStoreMatchPath,
+    auth,
+    buildCoffeeStoreMatchPayload(previewPayload),
+  );
+  const coffeeStoreMatch = extractLuckinContent(
+    coffeeStoreMatchResponse,
+    "coffee store match",
+  );
+
   const createPayload = buildCreatePayload(
     body,
     preview,
+    coffeeStoreMatch,
     context.coffeeCard,
     auth,
   );
@@ -434,6 +458,14 @@ export async function createMiniprogramOrderForSellable(
   );
   const order = extractLuckinContent(createResponse, "create");
   const pay = await completePayIfNeeded(fetcher, body, auth, order);
+  const actualCafeKuId = getActualCafeKuId(createPayload);
+  const actualCoffeeCard = actualCafeKuId
+    ? await getMiniprogramCoffeeCardByCafeKuId(
+        db,
+        context.orderUserId,
+        actualCafeKuId,
+      )
+    : null;
 
   await markMiniprogramSellableDone(db, {
     id: body.id,
@@ -441,9 +473,13 @@ export async function createMiniprogramOrderForSellable(
     productId: body.product.productId,
     skuCode: body.product.skuCode,
     productName: body.product.productName ?? null,
+    actualCafeKuId,
+    actualCoffeeCardId: actualCoffeeCard?.id ?? null,
   });
 
-  return pay ? { preview, order, pay } : { preview, order };
+  return pay
+    ? { preview, coffeeStoreMatch, order, pay }
+    : { preview, coffeeStoreMatch, order };
 }
 
 export async function fetchMiniprogramOrderDetailForSellable(
@@ -518,6 +554,23 @@ async function getMiniprogramCoffeeCardById(db: D1Database, id: number) {
   return row ? deserializeMiniprogramCoffeeCard(row) : null;
 }
 
+async function getMiniprogramCoffeeCardByCafeKuId(
+  db: D1Database,
+  orderUserId: string,
+  cafeKuId: string,
+) {
+  const row = await db
+    .prepare(
+      `SELECT *
+			 FROM miniprogram_coffee_cards
+			 WHERE order_user_id = ? AND cafe_ku_id = ? AND is_delete = 0`,
+    )
+    .bind(orderUserId, cafeKuId)
+    .first<Parameters<typeof deserializeMiniprogramCoffeeCard>[0]>();
+
+  return row ? deserializeMiniprogramCoffeeCard(row) : null;
+}
+
 async function insertSellableForCard(
   db: D1Database,
   card: Pick<MiniprogramCoffeeCardRow, "id" | "orderUserId">,
@@ -548,6 +601,42 @@ async function insertSellableForCard(
       card.orderUserId,
     )
     .run();
+}
+
+async function deleteWaitingSellablesForCard(
+  db: D1Database,
+  cardId: number,
+  count: number,
+) {
+  if (count <= 0) {
+    return 0;
+  }
+
+  const rows = await db
+    .prepare(
+      `SELECT id
+			 FROM miniprogram_sellable_products
+			 WHERE coffee_card_id = ?
+			   AND is_delete = 0
+			   AND status = 'waiting'
+			 ORDER BY id DESC
+			 LIMIT ?`,
+    )
+    .bind(cardId, count)
+    .all<{ id: string }>();
+
+  for (const row of rows.results) {
+    await db
+      .prepare(
+        `UPDATE miniprogram_sellable_products
+				 SET is_delete = 1
+				 WHERE id = ? AND is_delete = 0 AND status = 'waiting'`,
+      )
+      .bind(row.id)
+      .run();
+  }
+
+  return rows.results.length;
 }
 
 async function listActiveSellablesForCard(db: D1Database, cardId: number) {
@@ -916,6 +1005,7 @@ function toPreviewProduct(
 function buildCreatePayload(
   input: CreateOrderInput,
   preview: Record<string, unknown>,
+  coffeeStoreMatch: Record<string, unknown>,
   card: MiniprogramCoffeeCardRow,
   auth: MiniprogramAuth,
 ) {
@@ -930,7 +1020,7 @@ function buildCreatePayload(
     longitude: input.longitude,
     latitude: input.latitude,
     comboList: [],
-    productList: mapCreateProductList(input, preview, card),
+    productList: mapCreateProductList(input, preview, coffeeStoreMatch, card),
     couponCodeList: getStringArray(preview.couponCodeList),
     limitCouponCodeList: getStringArray(preview.limitCouponCodeList),
     dispatchCouponList: getStringArray(preview.dispatchCouponCodeList),
@@ -954,35 +1044,72 @@ function buildCreatePayload(
     payCardChecked: 0,
     payCardNo: "",
     cashCardList: [],
+    blackBox: auth.blackBox ?? "",
     miniversion: auth.version,
     wxScene: input.wxScene,
+  };
+}
+
+function buildCoffeeStoreMatchPayload(
+  previewPayload: ReturnType<typeof buildPreviewPayload>,
+) {
+  return {
+    ...previewPayload,
+    productList: previewPayload.productList.map((product, index) => ({
+      ...product,
+      productIndex: index,
+    })),
   };
 }
 
 function mapCreateProductList(
   input: CreateOrderInput,
   preview: Record<string, unknown>,
+  coffeeStoreMatch: Record<string, unknown>,
   card: MiniprogramCoffeeCardRow,
 ) {
-  const productDetailList = getProductDetailList(preview);
+  const productDetailList = getMatchedProductList(coffeeStoreMatch);
   if (!productDetailList.length) {
-    return [toPreviewProduct(input, card)];
+    const previewProductDetailList = getProductDetailList(preview);
+    if (!previewProductDetailList.length) {
+      return [toPreviewProduct(input, card)];
+    }
+
+    return mapCreateProducts(input, previewProductDetailList, card);
   }
 
-  return productDetailList.map((product, index) => ({
+  return mapCreateProducts(input, productDetailList, card);
+}
+
+function mapCreateProducts(
+  input: CreateOrderInput,
+  products: Record<string, unknown>[],
+  card: MiniprogramCoffeeCardRow,
+) {
+  return products.map((product, index) => ({
     indexId: numberValue(product.indexId) ?? index + 1,
     productId: numberValue(product.productId) ?? input.product.productId,
     skuCode: stringValue(product.skuCode) ?? input.product.skuCode,
     amount: numberValue(product.amount) ?? input.product.amount,
-    cafeKuId: card.cafeKuId,
-    couponNo: "",
-    coffeeVoucherType: card.coffeeVoucherType,
+    cafeKuId: stringValue(product.cafeKuId) ?? card.cafeKuId,
+    couponNo: stringValue(product.couponNo) ?? "",
+    coffeeVoucherType:
+      numberValue(product.coffeeVoucherType) ?? card.coffeeVoucherType,
     processTypeDetailList: Array.isArray(product.processTypeDetailList)
       ? product.processTypeDetailList
       : [],
     supportChangeProcessType:
       numberValue(product.supportChangeProcessType) ?? 0,
   }));
+}
+
+function getActualCafeKuId(createPayload: Record<string, unknown>) {
+  const productList = Array.isArray(createPayload.productList)
+    ? createPayload.productList
+    : [];
+  const product = productList.find(isRecord);
+
+  return product ? stringValue(product.cafeKuId) : null;
 }
 
 async function completePayIfNeeded(
@@ -1066,6 +1193,12 @@ function getProductDetailList(preview: Record<string, unknown>) {
     : preview.priceList;
 
   return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function getMatchedProductList(coffeeStoreMatch: Record<string, unknown>) {
+  return Array.isArray(coffeeStoreMatch.productList)
+    ? coffeeStoreMatch.productList.filter(isRecord)
+    : [];
 }
 
 function getOrderId(order: Record<string, unknown>) {

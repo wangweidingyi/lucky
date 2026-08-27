@@ -664,7 +664,7 @@ describe("miniprogram coffee-card ordering", () => {
     );
   });
 
-  it("previews, creates, completes zero-pay, and marks the miniprogram sellable row done", async () => {
+  it("previews, matches coffee cards, creates, completes zero-pay, and records the actually used card", async () => {
     const orderUserId = await createMiniprogramOrderUser();
     const syncResult = await syncMiniprogramCoffeeCards(
       env.DB,
@@ -677,6 +677,12 @@ describe("miniprogram coffee-card ordering", () => {
                 link: "/pages/index/menu?isCouponUse=true&couponNo=CK003&couponType=2",
                 coffeeVoucherType: 1,
                 coffeeStockTitle: "零元下单卡",
+                stockNum: 1,
+              },
+              {
+                link: "/pages/index/menu?isCouponUse=true&couponNo=CK004&couponType=2",
+                coffeeVoucherType: 1,
+                coffeeStockTitle: "瑞幸自动匹配卡",
                 stockNum: 1,
               },
             ],
@@ -707,7 +713,31 @@ describe("miniprogram coffee-card ordering", () => {
                   productId: 5151,
                   skuCode: "SP3571-00244",
                   amount: 1,
-                  cafeKuId: "OTHER_CARD_FROM_PREVIEW",
+                  cafeKuId: "CK003",
+                  couponNo: "",
+                  coffeeVoucherType: 1,
+                  processTypeDetailList: [],
+                  supportChangeProcessType: 0,
+                },
+              ],
+            },
+          });
+        }
+
+        if (
+          request.url.endsWith("/resource/core/v2/order/coffeestore/match")
+        ) {
+          return encryptedMiniprogramResponse({
+            code: 1,
+            content: {
+              totalDiscountMoney: 24,
+              productList: [
+                {
+                  indexId: 1,
+                  productId: 5151,
+                  skuCode: "SP3571-00244",
+                  amount: 1,
+                  cafeKuId: "CK004",
                   couponNo: "",
                   coffeeVoucherType: 1,
                   processTypeDetailList: [],
@@ -756,6 +786,7 @@ describe("miniprogram coffee-card ordering", () => {
 
     expect(calls.map((call) => call.url)).toEqual([
       "https://capi.lkcoffee.com/resource/core/v2/order/preview",
+      "https://capi.lkcoffee.com/resource/core/v2/order/coffeestore/match",
       "https://capi.lkcoffee.com/resource/core/v1/order/create",
       "https://capi.lkcoffee.com/resource/core/v2/pay/topay",
     ]);
@@ -777,12 +808,28 @@ describe("miniprogram coffee-card ordering", () => {
         coffeeVoucherType: 1,
       }),
     ]);
+    expect(calls[2].payload.productList).toEqual([
+      expect.objectContaining({
+        productId: 5151,
+        skuCode: "SP3571-00244",
+        cafeKuId: "CK004",
+        couponNo: "",
+        coffeeVoucherType: 1,
+      }),
+    ]);
+    expect(calls[2].payload.blackBox).toBe("blackbox-test");
     expect(result.order).toEqual(
       expect.objectContaining({ orderId: "ORDER001" }),
     );
 
     const row = await env.DB.prepare(
-      `SELECT status, luckin_order_id, selected_product_id, selected_sku_code
+      `SELECT status,
+              luckin_order_id,
+              selected_product_id,
+              selected_sku_code,
+              coffee_card_id,
+              actual_cafe_ku_id,
+              actual_coffee_card_id
 			 FROM miniprogram_sellable_products
 			 WHERE id = ?`,
     )
@@ -792,12 +839,18 @@ describe("miniprogram coffee-card ordering", () => {
         luckin_order_id: string;
         selected_product_id: number;
         selected_sku_code: string;
+        coffee_card_id: number;
+        actual_cafe_ku_id: string;
+        actual_coffee_card_id: number;
       }>();
     expect(row).toEqual({
       status: "done",
       luckin_order_id: "ORDER001",
       selected_product_id: 5151,
       selected_sku_code: "SP3571-00244",
+      coffee_card_id: syncResult.cards[0].id,
+      actual_cafe_ku_id: "CK004",
+      actual_coffee_card_id: syncResult.cards[1].id,
     });
   });
 });

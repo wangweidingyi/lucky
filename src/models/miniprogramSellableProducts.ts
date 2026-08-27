@@ -26,6 +26,8 @@ export const miniprogramSellableRowSchema = z.object({
   selectedProductId: z.number().int().nullable(),
   selectedSkuCode: z.string().nullable(),
   selectedProductName: z.string().nullable(),
+  actualCafeKuId: z.string().nullable(),
+  actualCoffeeCardId: z.number().int().nullable(),
   orderedAt: z.string().nullable(),
   isDelete: z.number().int(),
 });
@@ -59,6 +61,8 @@ type MiniprogramSellableDbRow = {
   selected_product_id: number | null;
   selected_sku_code: string | null;
   selected_product_name: string | null;
+  actual_cafe_ku_id: string | null;
+  actual_coffee_card_id: number | null;
   ordered_at: string | null;
   is_delete: number;
 };
@@ -100,6 +104,8 @@ export function deserializeMiniprogramSellable(
     selectedProductId: row.selected_product_id,
     selectedSkuCode: row.selected_sku_code,
     selectedProductName: row.selected_product_name,
+    actualCafeKuId: row.actual_cafe_ku_id,
+    actualCoffeeCardId: row.actual_coffee_card_id,
     orderedAt: row.ordered_at,
     isDelete: row.is_delete,
   };
@@ -181,6 +187,8 @@ export async function markMiniprogramSellableDone(
     productId: number;
     skuCode: string;
     productName?: string | null;
+    actualCafeKuId?: string | null;
+    actualCoffeeCardId?: number | null;
   },
 ) {
   await db
@@ -191,6 +199,8 @@ export async function markMiniprogramSellableDone(
 				 selected_product_id = ?,
 				 selected_sku_code = ?,
 				 selected_product_name = ?,
+				 actual_cafe_ku_id = ?,
+				 actual_coffee_card_id = ?,
 				 ordered_at = CURRENT_TIMESTAMP
 			 WHERE id = ? AND is_delete = 0 AND status IN ('waiting', 'pending')`,
     )
@@ -199,6 +209,8 @@ export async function markMiniprogramSellableDone(
       input.productId,
       input.skuCode,
       input.productName ?? null,
+      input.actualCafeKuId ?? null,
+      input.actualCoffeeCardId ?? null,
       input.id,
     )
     .run();
