@@ -664,7 +664,7 @@ describe("miniprogram coffee-card ordering", () => {
     );
   });
 
-  it("previews, matches coffee cards, creates, completes zero-pay, and records the actually used card", async () => {
+  it("lets Luckin choose the concrete coffee card during preview and records the actually used card", async () => {
     const orderUserId = await createMiniprogramOrderUser();
     const syncResult = await syncMiniprogramCoffeeCards(
       env.DB,
@@ -798,18 +798,18 @@ describe("miniprogram coffee-card ordering", () => {
       expect.objectContaining({
         productId: 5151,
         skuCode: "SP3571-00244",
-        cafeKuId: "CK003",
+        cafeKuId: "",
         couponNo: "",
-        coffeeVoucherType: 1,
+        coffeeVoucherType: 0,
       }),
     ]);
     expect(calls[1].payload.productList).toEqual([
       expect.objectContaining({
         productId: 5151,
         skuCode: "SP3571-00244",
-        cafeKuId: "CK003",
+        cafeKuId: "",
         couponNo: "",
-        coffeeVoucherType: 1,
+        coffeeVoucherType: 0,
       }),
     ]);
     expect(calls[2].payload.productList).toEqual([

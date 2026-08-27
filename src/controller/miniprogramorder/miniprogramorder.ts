@@ -422,7 +422,7 @@ export async function createMiniprogramOrderForSellable(
   const auth = authFromMiniprogramOrderUser(orderUser);
   assertPayAuth(auth);
 
-  const previewPayload = buildPreviewPayload(body, context.coffeeCard, auth);
+  const previewPayload = buildPreviewPayload(body, auth);
   const previewResponse = await postLuckinJson(
     fetcher,
     previewPath,
@@ -939,7 +939,6 @@ function normalizeLuckinProductWithFallback(
 
 function buildPreviewPayload(
   input: CreateOrderInput,
-  card: MiniprogramCoffeeCardRow,
   auth: MiniprogramAuth,
 ) {
   return {
@@ -951,7 +950,7 @@ function buildPreviewPayload(
     deptId: input.deptId,
     addressId: "",
     comboList: [],
-    productList: [toPreviewProduct(input, card)],
+    productList: [toPreviewProduct(input)],
     delivery: "pick",
     eatway: "package",
     useDiscount: 1,
@@ -983,10 +982,6 @@ function buildPreviewPayload(
 
 function toPreviewProduct(
   input: CreateOrderInput,
-  card: Pick<
-    MiniprogramCoffeeCardRow,
-    "cafeKuId" | "couponNo" | "coffeeVoucherType"
-  >,
 ) {
   return {
     indexId: 1,
@@ -996,9 +991,9 @@ function toPreviewProduct(
     productId: input.product.productId,
     skuCode: input.product.skuCode,
     processTypeDetailList: input.product.processTypeDetailList,
-    cafeKuId: card.cafeKuId,
+    cafeKuId: "",
     couponNo: "",
-    coffeeVoucherType: card.coffeeVoucherType,
+    coffeeVoucherType: 0,
   };
 }
 
@@ -1071,7 +1066,7 @@ function mapCreateProductList(
   if (!productDetailList.length) {
     const previewProductDetailList = getProductDetailList(preview);
     if (!previewProductDetailList.length) {
-      return [toPreviewProduct(input, card)];
+      return [toPreviewProduct(input)];
     }
 
     return mapCreateProducts(input, previewProductDetailList, card);
