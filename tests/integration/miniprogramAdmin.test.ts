@@ -168,5 +168,28 @@ describe("miniprogram admin API", () => {
 		expect(noOp.body.result.sellables.map((sellable) => sellable.id)).toEqual(
 			generated.body.result.sellables.map((sellable) => sellable.id),
 		);
+
+		const deleted = await post<{
+			result: { id: string; isDelete: number };
+		}>("/lkadmin/miniprogram/sellable-products/delete", {
+			id: generated.body.result.sellables[0].id,
+		});
+
+		expect(deleted.response.status).toBe(200);
+		expect(deleted.body.result).toEqual(
+			expect.objectContaining({
+				id: generated.body.result.sellables[0].id,
+				isDelete: 1,
+			}),
+		);
+
+		const listAfterDelete = await post<{
+			result: Array<{ id: string }>;
+		}>("/lkadmin/miniprogram/sellable-products/list", { coffeeCardId: cardId });
+
+		expect(listAfterDelete.response.status).toBe(200);
+		expect(listAfterDelete.body.result.map((sellable) => sellable.id)).toEqual([
+			generated.body.result.sellables[1].id,
+		]);
 	});
 });

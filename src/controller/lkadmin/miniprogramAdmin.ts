@@ -14,6 +14,7 @@ import {
 } from "../../models/miniprogramOrderUsers";
 import {
 	deserializeMiniprogramSellable,
+	miniprogramSellableIdSchema,
 	type MiniprogramSellableRow,
 } from "../../models/miniprogramSellableProducts";
 import { generateId } from "../../shared/id";
@@ -264,6 +265,31 @@ router.post("/sellable-products/list", async (c: AppContext) => {
 	return ok(c, result.results.map(deserializeMiniprogramSellable));
 });
 
+router.post("/sellable-products/delete", async (c: AppContext) => {
+	const body = await parseBody(
+		c,
+		z.object({ id: miniprogramSellableIdSchema }),
+	);
+	if (isResponse(body)) {
+		return body;
+	}
+
+	const existing = await getSellableProduct(c.env.DB, body.id);
+	if (!existing) {
+		return fail(c, "Not Found", 404);
+	}
+
+	await c.env.DB.prepare(
+		`UPDATE miniprogram_sellable_products
+		 SET is_delete = 1
+		 WHERE id = ? AND is_delete = 0`,
+	)
+		.bind(body.id)
+		.run();
+
+	return ok(c, await getSellableProduct(c.env.DB, body.id, true));
+});
+
 router.post("/coffee-cards/read", async (c: AppContext) => {
 	const body = await parseBody(
 		c,
@@ -299,6 +325,23 @@ async function getOrderUser(
 		)
 		.bind(id)
 		.first<z.infer<typeof miniprogramOrderUserRowSchema>>();
+}
+
+async function getSellableProduct(
+	db: D1Database,
+	id: string,
+	includeDeleted = false,
+) {
+	const row = await db
+		.prepare(
+			`SELECT *
+			 FROM miniprogram_sellable_products
+			 WHERE id = ? ${includeDeleted ? "" : "AND is_delete = 0"}`,
+		)
+		.bind(id)
+		.first<Parameters<typeof deserializeMiniprogramSellable>[0]>();
+
+	return row ? deserializeMiniprogramSellable(row) : null;
 }
 
 async function readJson(c: AppContext) {
