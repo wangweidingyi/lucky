@@ -1044,7 +1044,6 @@ function buildCreatePayload(
     payCardChecked: 0,
     payCardNo: "",
     cashCardList: [],
-    blackBox: auth.blackBox ?? "",
     miniversion: auth.version,
     wxScene: input.wxScene,
   };

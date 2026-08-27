@@ -829,7 +829,7 @@ describe("miniprogram coffee-card ordering", () => {
         cardCodeList: [],
       }),
     );
-    expect(calls[2].payload.blackBox).toBe("blackbox-test");
+    expect(calls[2].payload).not.toHaveProperty("blackBox");
     expect(result.order).toEqual(
       expect.objectContaining({ orderId: "ORDER001" }),
     );
