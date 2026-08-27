@@ -33,6 +33,7 @@ import {
   orderDetailPath,
   payPath,
   postLuckinJson,
+  preCreatePath,
   previewPath,
   productDetailPath,
   productPriceCalcPath,
@@ -452,6 +453,15 @@ export async function createMiniprogramOrderForSellable(
     context.coffeeCard,
     auth,
   );
+  const preCreatePayload = buildPreCreatePayload(createPayload);
+  const preCreateResponse = await postLuckinJson(
+    fetcher,
+    preCreatePath,
+    auth,
+    preCreatePayload,
+  );
+  assertPreCreate(preCreateResponse);
+
   const createResponse = await postLuckinJson(
     fetcher,
     createPath,
@@ -1001,44 +1011,56 @@ function buildCreatePayload(
   card: MiniprogramCoffeeCardRow,
   auth: MiniprogramAuth,
 ) {
-  return {
-    shopAbTest: true,
-    cityId: input.cityId,
+  const payload: Record<string, unknown> = {
     scene: 0,
-    deptId: input.deptId,
-    delivery: "pick",
-    eatway: "package",
-    addressId: "",
-    longitude: input.longitude,
-    latitude: input.latitude,
+    deptId: String(input.deptId),
     comboList: [],
     productList: mapCreateProductList(input, preview, coffeeStoreMatch, card),
+    delivery: "pick",
+    addressId: "",
+    eatway: "eat",
     couponCodeList: [],
     limitCouponCodeList: [],
-    dispatchCouponList: [],
-    cardCodeList: [],
+    remark: input.remark,
+    longitude: input.longitude,
+    latitude: input.latitude,
+    channel: "GCJ-02",
     submit: 0,
     submitOf600: 0,
     joinPlan: getArray(preview.joinPlan),
-    appVersion: 101,
-    giftProductList: [],
+    appVersion: auth.version,
+    needs: null,
+    showAgain: 0,
     useCoffeeStore: 1,
     dispatchDistance: "",
     paymentAccountType: 1,
-    remark: input.remark,
-    needs: [],
-    showAgain: 0,
     showMsg: true,
+    dispatchCouponList: [],
     demotionType: 0,
+    giftProductList: [],
     marketingChecked: 0,
     marketingNo: "",
     payCardSceneType: 1,
+    cardCodeList: [],
     payCardChecked: 0,
     payCardNo: "",
+    priority: numberValue(preview.priority) ?? 2,
     cashCardList: [],
+    blackBox: auth.blackBox ?? "",
     miniversion: auth.version,
     wxScene: input.wxScene,
   };
+
+  if (auth.deviceId) {
+    payload.did = auth.deviceId;
+  }
+
+  return payload;
+}
+
+function buildPreCreatePayload(createPayload: Record<string, unknown>) {
+  const { wxScene: _wxScene, ...payload } = createPayload;
+  return payload;
 }
 
 function buildCoffeeStoreMatchPayload(
@@ -1218,6 +1240,25 @@ function assertPayAuth(auth: MiniprogramAuth) {
       409,
     );
   }
+}
+
+function assertPreCreate(response: {
+  code?: number;
+  busiCode?: string;
+  msg?: string;
+}) {
+  if (response.code === 1) {
+    return;
+  }
+
+  if (response.code === 7 && response.busiCode === "BASE900") {
+    return;
+  }
+
+  throw new MiniprogramClientError(
+    response.msg || "Luckin preCreate request failed",
+    502,
+  );
 }
 
 function assertZeroPayPreview(preview: Record<string, unknown>) {

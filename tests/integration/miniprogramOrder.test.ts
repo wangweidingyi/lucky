@@ -72,6 +72,7 @@ async function createMiniprogramOrderUser() {
 			uid,
 			openid,
 			black_box,
+			device_id,
 			notify_code,
 			csid,
 			pay_type,
@@ -81,7 +82,7 @@ async function createMiniprogramOrderUser() {
 			cookie,
 			is_delete
 		)
-		VALUES (?, ?, 'enabled', ?, ?, ?, ?, ?, '7', '5587', ?, 'https://capi.lkcoffee.com', ?, 0)`,
+		VALUES (?, ?, 'enabled', ?, ?, ?, ?, ?, ?, '7', '5587', ?, 'https://capi.lkcoffee.com', ?, 0)`,
   )
     .bind(
       id,
@@ -89,6 +90,7 @@ async function createMiniprogramOrderUser() {
       miniprogramUid,
       "openid-test",
       "blackbox-test",
+      "DXHQIwTYZMEwGKGPEj3jLbuxZ5z5zde0M5ac",
       "notify-test",
       "csid-test",
       miniprogramAesKey,
@@ -757,6 +759,15 @@ describe("miniprogram coffee-card ordering", () => {
           });
         }
 
+        if (request.url.endsWith("/resource/core/v1/order/preCreate")) {
+          return encryptedMiniprogramResponse({
+            code: 7,
+            busiCode: "BASE900",
+            msg: "{{虹桥天地店}}确认订单后将无法更改",
+            content: null,
+          });
+        }
+
         if (request.url.endsWith("/resource/core/v1/order/create")) {
           return encryptedMiniprogramResponse({
             code: 1,
@@ -796,6 +807,7 @@ describe("miniprogram coffee-card ordering", () => {
     expect(calls.map((call) => call.url)).toEqual([
       "https://capi.lkcoffee.com/resource/core/v2/order/preview",
       "https://capi.lkcoffee.com/resource/core/v2/order/coffeestore/match",
+      "https://capi.lkcoffee.com/resource/core/v1/order/preCreate",
       "https://capi.lkcoffee.com/resource/core/v1/order/create",
       "https://capi.lkcoffee.com/resource/core/v2/pay/topay",
     ]);
@@ -817,7 +829,41 @@ describe("miniprogram coffee-card ordering", () => {
         coffeeVoucherType: 0,
       }),
     ]);
-    expect(calls[2].payload.productList).toEqual([
+    expect(calls[2].payload).toEqual(
+      expect.objectContaining({
+        deptId: "613299",
+        delivery: "pick",
+        eatway: "eat",
+        channel: "GCJ-02",
+        appVersion: "5587",
+        needs: null,
+        priority: 2,
+        blackBox: "blackbox-test",
+        did: "DXHQIwTYZMEwGKGPEj3jLbuxZ5z5zde0M5ac",
+        miniversion: "5587",
+      }),
+    );
+    expect(calls[2].payload).not.toHaveProperty("shopAbTest");
+    expect(calls[2].payload).not.toHaveProperty("cityId");
+    expect(calls[2].payload).not.toHaveProperty("wxScene");
+    expect(calls[3].payload).toEqual(
+      expect.objectContaining({
+        deptId: "613299",
+        delivery: "pick",
+        eatway: "eat",
+        channel: "GCJ-02",
+        appVersion: "5587",
+        needs: null,
+        priority: 2,
+        blackBox: "blackbox-test",
+        did: "DXHQIwTYZMEwGKGPEj3jLbuxZ5z5zde0M5ac",
+        wxScene: 1001,
+        miniversion: "5587",
+      }),
+    );
+    expect(calls[3].payload).not.toHaveProperty("shopAbTest");
+    expect(calls[3].payload).not.toHaveProperty("cityId");
+    expect(calls[3].payload.productList).toEqual([
       expect.objectContaining({
         productId: 5151,
         skuCode: "SP3571-00244",
@@ -833,7 +879,7 @@ describe("miniprogram coffee-card ordering", () => {
         matchedSaleAttributeId: 88001,
       }),
     ]);
-    expect(calls[2].payload).toEqual(
+    expect(calls[3].payload).toEqual(
       expect.objectContaining({
         couponCodeList: [],
         limitCouponCodeList: [],
@@ -841,7 +887,6 @@ describe("miniprogram coffee-card ordering", () => {
         cardCodeList: [],
       }),
     );
-    expect(calls[2].payload).not.toHaveProperty("blackBox");
     expect(result.order).toEqual(
       expect.objectContaining({ orderId: "ORDER001" }),
     );
@@ -941,6 +986,13 @@ describe("miniprogram coffee-card ordering", () => {
           });
         }
 
+        if (request.url.endsWith("/resource/core/v1/order/preCreate")) {
+          return encryptedMiniprogramResponse({
+            code: 1,
+            content: { canCreate: true },
+          });
+        }
+
         if (request.url.endsWith("/resource/core/v1/order/create")) {
           return encryptedMiniprogramResponse({
             code: 1,
@@ -980,7 +1032,7 @@ describe("miniprogram coffee-card ordering", () => {
       },
     );
 
-    expect(calls[2].payload.productList).toEqual([
+    expect(calls[3].payload.productList).toEqual([
       expect.objectContaining({
         productId: 5790,
         skuCode: "SP4210-HOT",
