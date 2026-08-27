@@ -232,6 +232,31 @@ router.post("/coffee-cards/generate-sellables", async (c: AppContext) => {
 	}
 });
 
+router.post("/coffee-cards/delete", async (c: AppContext) => {
+	const body = await parseBody(
+		c,
+		z.object({ id: z.number().int().positive() }),
+	);
+	if (isResponse(body)) {
+		return body;
+	}
+
+	const existing = await getCoffeeCard(c.env.DB, body.id);
+	if (!existing) {
+		return fail(c, "Not Found", 404);
+	}
+
+	await c.env.DB.prepare(
+		`UPDATE miniprogram_coffee_cards
+		 SET is_delete = 1
+		 WHERE id = ? AND is_delete = 0`,
+	)
+		.bind(body.id)
+		.run();
+
+	return ok(c, await getCoffeeCard(c.env.DB, body.id, true));
+});
+
 router.post("/sellable-products/list", async (c: AppContext) => {
 	const body = await parseBody(c, listSellableBodySchema);
 	if (isResponse(body)) {
@@ -342,6 +367,23 @@ async function getSellableProduct(
 		.first<Parameters<typeof deserializeMiniprogramSellable>[0]>();
 
 	return row ? deserializeMiniprogramSellable(row) : null;
+}
+
+async function getCoffeeCard(
+	db: D1Database,
+	id: number,
+	includeDeleted = false,
+) {
+	const row = await db
+		.prepare(
+			`SELECT *
+			 FROM miniprogram_coffee_cards
+			 WHERE id = ? ${includeDeleted ? "" : "AND is_delete = 0"}`,
+		)
+		.bind(id)
+		.first<Parameters<typeof deserializeMiniprogramCoffeeCard>[0]>();
+
+	return row ? deserializeMiniprogramCoffeeCard(row) : null;
 }
 
 async function readJson(c: AppContext) {

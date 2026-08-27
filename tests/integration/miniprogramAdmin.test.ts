@@ -192,4 +192,66 @@ describe("miniprogram admin API", () => {
 			generated.body.result.sellables[1].id,
 		]);
 	});
+
+	it("soft deletes a miniprogram coffee card and excludes it from card lists", async () => {
+		const orderUserId = "AdmCardDel";
+		const cardId = 987655;
+
+		await env.DB.prepare(
+			`INSERT INTO miniprogram_order_users (
+				id,
+				nickname,
+				status,
+				uid,
+				miniprogram_version,
+				aes_key,
+				base_url,
+				is_delete
+			)
+			VALUES (?, 'card delete admin', 'enabled', 'uid-card-delete-admin', '5587', 'CJQjAc1hYieC4QYb', 'https://capi.lkcoffee.com', 0)`,
+		)
+			.bind(orderUserId)
+			.run();
+
+		await env.DB.prepare(
+			`INSERT INTO miniprogram_coffee_cards (
+				id,
+				order_user_id,
+				cafe_ku_id,
+				coupon_no,
+				coupon_type,
+				coffee_voucher_type,
+				card_name,
+				usable_quantity,
+				generated_sellable_count,
+				raw,
+				is_delete
+			)
+			VALUES (?, ?, 'CK-ADMIN-DEL', 'CK-ADMIN-DEL', 2, 0, '待删除卡券', 1, 0, '{}', 0)`,
+		)
+			.bind(cardId, orderUserId)
+			.run();
+
+		const deleted = await post<{
+			result: { id: number; cardName: string; isDelete: number };
+		}>("/lkadmin/miniprogram/coffee-cards/delete", { id: cardId });
+
+		expect(deleted.response.status).toBe(200);
+		expect(deleted.body.result).toEqual(
+			expect.objectContaining({
+				id: cardId,
+				cardName: "待删除卡券",
+				isDelete: 1,
+			}),
+		);
+
+		const listAfterDelete = await post<{
+			result: Array<{ id: number }>;
+		}>("/lkadmin/miniprogram/coffee-cards/list", { orderUserId });
+
+		expect(listAfterDelete.response.status).toBe(200);
+		expect(listAfterDelete.body.result.map((card) => card.id)).not.toContain(
+			cardId,
+		);
+	});
 });
