@@ -1062,17 +1062,17 @@ function mapCreateProductList(
   coffeeStoreMatch: Record<string, unknown>,
   card: MiniprogramCoffeeCardRow,
 ) {
-  const productDetailList = getMatchedProductList(coffeeStoreMatch);
-  if (!productDetailList.length) {
-    const previewProductDetailList = getProductDetailList(preview);
-    if (!previewProductDetailList.length) {
-      return [toPreviewProduct(input)];
-    }
-
+  const previewProductDetailList = getProductDetailList(preview);
+  if (previewProductDetailList.length) {
     return mapCreateProducts(input, previewProductDetailList, card);
   }
 
-  return mapCreateProducts(input, productDetailList, card);
+  const matchedProductList = getMatchedProductList(coffeeStoreMatch);
+  if (matchedProductList.length) {
+    return mapCreateProducts(input, matchedProductList, card);
+  }
+
+  return [toPreviewProduct(input)];
 }
 
 function mapCreateProducts(
@@ -1080,21 +1080,50 @@ function mapCreateProducts(
   products: Record<string, unknown>[],
   card: MiniprogramCoffeeCardRow,
 ) {
-  return products.map((product, index) => ({
-    indexId: numberValue(product.indexId) ?? index + 1,
-    productId: numberValue(product.productId) ?? input.product.productId,
-    skuCode: stringValue(product.skuCode) ?? input.product.skuCode,
-    amount: numberValue(product.amount) ?? input.product.amount,
-    cafeKuId: stringValue(product.cafeKuId) ?? card.cafeKuId,
-    couponNo: "",
-    coffeeVoucherType:
-      numberValue(product.coffeeVoucherType) ?? card.coffeeVoucherType,
-    processTypeDetailList: Array.isArray(product.processTypeDetailList)
-      ? product.processTypeDetailList
-      : [],
-    supportChangeProcessType:
-      numberValue(product.supportChangeProcessType) ?? 0,
-  }));
+  return products.map((product, index) =>
+    withOptionalProductFields(
+      {
+        indexId: numberValue(product.indexId) ?? index + 1,
+        productId: numberValue(product.productId) ?? input.product.productId,
+        skuCode: stringValue(product.skuCode) ?? input.product.skuCode,
+        amount: numberValue(product.amount) ?? input.product.amount,
+        cafeKuId: stringValue(product.cafeKuId) ?? card.cafeKuId,
+        couponNo: stringValue(product.couponNo) ?? "",
+        coffeeVoucherType:
+          numberValue(product.coffeeVoucherType) ?? card.coffeeVoucherType,
+        processTypeDetailList: Array.isArray(product.processTypeDetailList)
+          ? product.processTypeDetailList
+          : [],
+        supportChangeProcessType:
+          numberValue(product.supportChangeProcessType) ?? 0,
+      },
+      product,
+    ),
+  );
+}
+
+function withOptionalProductFields(
+  base: Record<string, unknown>,
+  source: Record<string, unknown>,
+) {
+  const passthroughKeys = [
+    "abName",
+    "activityFlag",
+    "group",
+    "groupType",
+    "itemFromLocation",
+    "matchedSaleAttributeId",
+    "storeyType",
+    "transmission",
+  ];
+
+  for (const key of passthroughKeys) {
+    if (source[key] !== undefined && source[key] !== null) {
+      base[key] = source[key];
+    }
+  }
+
+  return base;
 }
 
 function getActualCafeKuId(createPayload: Record<string, unknown>) {

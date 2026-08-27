@@ -664,7 +664,7 @@ describe("miniprogram coffee-card ordering", () => {
     );
   });
 
-  it("lets Luckin choose the concrete coffee card during preview and records the actually used card", async () => {
+  it("creates with the preview-selected coffee card instead of overriding it with coffeestore match", async () => {
     const orderUserId = await createMiniprogramOrderUser();
     const syncResult = await syncMiniprogramCoffeeCards(
       env.DB,
@@ -722,6 +722,13 @@ describe("miniprogram coffee-card ordering", () => {
                   coffeeVoucherType: 1,
                   processTypeDetailList: [],
                   supportChangeProcessType: 0,
+                  group: 9,
+                  groupType: 2,
+                  itemFromLocation: "card-zone",
+                  transmission: {
+                    traceId: "preview-trace",
+                  },
+                  matchedSaleAttributeId: 88001,
                 },
               ],
             },
@@ -816,9 +823,16 @@ describe("miniprogram coffee-card ordering", () => {
       expect.objectContaining({
         productId: 5151,
         skuCode: "SP3571-00244",
-        cafeKuId: "CK004",
+        cafeKuId: "CK003",
         couponNo: "",
         coffeeVoucherType: 1,
+        group: 9,
+        groupType: 2,
+        itemFromLocation: "card-zone",
+        transmission: {
+          traceId: "preview-trace",
+        },
+        matchedSaleAttributeId: 88001,
       }),
     ]);
     expect(calls[2].payload).toEqual(
@@ -861,8 +875,8 @@ describe("miniprogram coffee-card ordering", () => {
       selected_product_id: 5151,
       selected_sku_code: "SP3571-00244",
       coffee_card_id: syncResult.cards[0].id,
-      actual_cafe_ku_id: "CK004",
-      actual_coffee_card_id: syncResult.cards[1].id,
+      actual_cafe_ku_id: "CK003",
+      actual_coffee_card_id: syncResult.cards[0].id,
     });
   });
 });
