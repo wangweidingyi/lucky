@@ -707,7 +707,7 @@ describe("miniprogram coffee-card ordering", () => {
                   productId: 5151,
                   skuCode: "SP3571-00244",
                   amount: 1,
-                  cafeKuId: "CK003",
+                  cafeKuId: "OTHER_CARD_FROM_PREVIEW",
                   couponNo: "",
                   coffeeVoucherType: 1,
                   processTypeDetailList: [],

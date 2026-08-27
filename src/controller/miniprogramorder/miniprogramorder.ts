@@ -974,10 +974,9 @@ function mapCreateProductList(
     productId: numberValue(product.productId) ?? input.product.productId,
     skuCode: stringValue(product.skuCode) ?? input.product.skuCode,
     amount: numberValue(product.amount) ?? input.product.amount,
-    cafeKuId: stringValue(product.cafeKuId) ?? card.cafeKuId,
-    couponNo: stringValue(product.couponNo) ?? "",
-    coffeeVoucherType:
-      numberValue(product.coffeeVoucherType) ?? card.coffeeVoucherType,
+    cafeKuId: card.cafeKuId,
+    couponNo: "",
+    coffeeVoucherType: card.coffeeVoucherType,
     processTypeDetailList: Array.isArray(product.processTypeDetailList)
       ? product.processTypeDetailList
       : [],
