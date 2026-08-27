@@ -707,6 +707,10 @@ describe("miniprogram coffee-card ordering", () => {
             code: 1,
             content: {
               discountPrice: 0,
+              couponCodeList: ["AUTO-COUPON-SHOULD-NOT-CREATE"],
+              limitCouponCodeList: ["AUTO-LIMIT-SHOULD-NOT-CREATE"],
+              dispatchCouponCodeList: ["AUTO-DISPATCH-SHOULD-NOT-CREATE"],
+              cardCodeList: ["AUTO-MEMBER-CARD-SHOULD-NOT-CREATE"],
               productDetailList: [
                 {
                   indexId: 1,
@@ -738,7 +742,7 @@ describe("miniprogram coffee-card ordering", () => {
                   skuCode: "SP3571-00244",
                   amount: 1,
                   cafeKuId: "CK004",
-                  couponNo: "",
+                  couponNo: "AUTO-PRODUCT-COUPON-SHOULD-NOT-CREATE",
                   coffeeVoucherType: 1,
                   processTypeDetailList: [],
                   supportChangeProcessType: 0,
@@ -817,6 +821,14 @@ describe("miniprogram coffee-card ordering", () => {
         coffeeVoucherType: 1,
       }),
     ]);
+    expect(calls[2].payload).toEqual(
+      expect.objectContaining({
+        couponCodeList: [],
+        limitCouponCodeList: [],
+        dispatchCouponList: [],
+        cardCodeList: [],
+      }),
+    );
     expect(calls[2].payload.blackBox).toBe("blackbox-test");
     expect(result.order).toEqual(
       expect.objectContaining({ orderId: "ORDER001" }),

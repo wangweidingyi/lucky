@@ -1021,10 +1021,10 @@ function buildCreatePayload(
     latitude: input.latitude,
     comboList: [],
     productList: mapCreateProductList(input, preview, coffeeStoreMatch, card),
-    couponCodeList: getStringArray(preview.couponCodeList),
-    limitCouponCodeList: getStringArray(preview.limitCouponCodeList),
-    dispatchCouponList: getStringArray(preview.dispatchCouponCodeList),
-    cardCodeList: getStringArray(preview.cardCodeList),
+    couponCodeList: [],
+    limitCouponCodeList: [],
+    dispatchCouponList: [],
+    cardCodeList: [],
     submit: 0,
     submitOf600: 0,
     joinPlan: getArray(preview.joinPlan),
@@ -1092,7 +1092,7 @@ function mapCreateProducts(
     skuCode: stringValue(product.skuCode) ?? input.product.skuCode,
     amount: numberValue(product.amount) ?? input.product.amount,
     cafeKuId: stringValue(product.cafeKuId) ?? card.cafeKuId,
-    couponNo: stringValue(product.couponNo) ?? "",
+    couponNo: "",
     coffeeVoucherType:
       numberValue(product.coffeeVoucherType) ?? card.coffeeVoucherType,
     processTypeDetailList: Array.isArray(product.processTypeDetailList)
@@ -1206,12 +1206,6 @@ function getOrderId(order: Record<string, unknown>) {
   return typeof orderId === "string" || typeof orderId === "number"
     ? String(orderId)
     : null;
-}
-
-function getStringArray(value: unknown) {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
-    : [];
 }
 
 function getArray(value: unknown) {
