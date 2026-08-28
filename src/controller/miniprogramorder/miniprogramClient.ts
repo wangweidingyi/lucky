@@ -374,9 +374,15 @@ function getCookieKeys(cookie: string) {
 }
 
 function getRequestSid(payload: Record<string, unknown>) {
-  return typeof payload.deptId === "number"
-    ? String(payload.deptId)
-    : defaultMiniprogramSid;
+  if (typeof payload.deptId === "number" && Number.isFinite(payload.deptId)) {
+    return String(payload.deptId);
+  }
+
+  if (typeof payload.deptId === "string" && payload.deptId.trim()) {
+    return payload.deptId.trim();
+  }
+
+  return defaultMiniprogramSid;
 }
 
 function summarizeFormBody(body: string) {

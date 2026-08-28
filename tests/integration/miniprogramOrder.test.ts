@@ -695,14 +695,22 @@ describe("miniprogram coffee-card ordering", () => {
     const sellable = await firstGeneratedSellableForCard(
       syncResult.cards[0].id,
     );
-    const calls: Array<{ url: string; payload: Record<string, unknown> }> = [];
+    const calls: Array<{
+      url: string;
+      payload: Record<string, unknown>;
+      sid: string | null;
+    }> = [];
 
     const result = await createMiniprogramOrderForSellable(
       env.DB,
       async (input, init) => {
         const request = new Request(input, init);
         const payload = await requestPayload(request);
-        calls.push({ url: request.url, payload });
+        calls.push({
+          url: request.url,
+          payload,
+          sid: request.headers.get("X-LK-SID"),
+        });
 
         if (request.url.endsWith("/resource/core/v2/order/preview")) {
           return encryptedMiniprogramResponse({
@@ -843,6 +851,7 @@ describe("miniprogram coffee-card ordering", () => {
         miniversion: "5587",
       }),
     );
+    expect(calls[2].sid).toBe("613299");
     expect(calls[2].payload).not.toHaveProperty("shopAbTest");
     expect(calls[2].payload).not.toHaveProperty("cityId");
     expect(calls[2].payload).not.toHaveProperty("wxScene");
@@ -861,6 +870,7 @@ describe("miniprogram coffee-card ordering", () => {
         miniversion: "5587",
       }),
     );
+    expect(calls[3].sid).toBe("613299");
     expect(calls[3].payload).not.toHaveProperty("shopAbTest");
     expect(calls[3].payload).not.toHaveProperty("cityId");
     expect(calls[3].payload.productList).toEqual([
