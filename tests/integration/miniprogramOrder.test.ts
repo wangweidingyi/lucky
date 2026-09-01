@@ -441,7 +441,7 @@ describe("miniprogram coffee-card ordering", () => {
     ]);
   });
 
-  it("searches shops by name or address without pagination parameters", async () => {
+  it("searches shops by name or address with the default pagination payload", async () => {
     const orderUserId = await createMiniprogramOrderUser();
     const syncResult = await syncMiniprogramCoffeeCards(
       env.DB,
@@ -475,6 +475,7 @@ describe("miniprogram coffee-card ordering", () => {
         channel: "GCJ-02",
         cityId: 2,
         searchValue: "虹桥",
+        offSet: 0,
         pageSize: 10,
       });
 
