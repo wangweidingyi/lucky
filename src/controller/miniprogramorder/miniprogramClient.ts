@@ -7,6 +7,7 @@ export const coffeeCardListPath = "/resource/m/promotion/v2/myself/list";
 export const cardCouponZonePath = "/resource/core/v3/product/cardCouponZone";
 export const productDetailPath = "/resource/core/v2/product/detail";
 export const productPriceCalcPath = "/resource/core/v2/product/priceCalc";
+export const openingCitysPath = "/resource/m/sys/app/openingcitys";
 export const shopListPath = "/resource/m/shop/shopList";
 export const shopSearchPath = "/resource/m/shop/list";
 export const previewPath = "/resource/core/v2/order/preview";
@@ -220,6 +221,90 @@ function buildSignedFormBody(
   params.sign = signParams(params, auth.aesKey, auth.uid);
 
   return new URLSearchParams(params).toString();
+}
+
+export async function getLuckinJson(
+  fetcher: typeof fetch,
+  path: string,
+  auth: MiniprogramAuth,
+  payload: Record<string, unknown>,
+  options: { sid?: string } = {},
+) {
+  const query = buildSignedFormBody(payload, auth);
+  const url = `${auth.baseUrl}${path}?${query}`;
+  const headers = buildMiniprogramHeaders(payload, auth, options);
+
+  logMiniprogram("third_party.request", {
+    path,
+    url,
+    method: "GET",
+    cid: auth.cid,
+    hasCookie: Boolean(auth.cookie),
+    cookieHasUid: Boolean(extractCookieValue(auth.cookie, "uid")),
+    headers: summarizeRequestHeaders(headers),
+    payloadBeforeEncrypt: payload,
+    formParams: summarizeFormBody(query),
+  });
+
+  let response: Response;
+  try {
+    response = await fetcher(url, {
+      method: "GET",
+      headers,
+    });
+  } catch (error) {
+    logMiniprogramError("third_party.request.failed", { path, url, error });
+    throw new MiniprogramClientError("Luckin miniprogram request failed", 502);
+  }
+
+  const rawText = await response.text();
+  logMiniprogram("third_party.response.http", {
+    path,
+    url,
+    status: response.status,
+    ok: response.ok,
+    contentType: response.headers.get("content-type"),
+    zeusId: response.headers.get("x-zeus-msg-id"),
+    rawLength: rawText.length,
+    rawPrefix: rawText.slice(0, 160),
+  });
+
+  if (!response.ok) {
+    throw new MiniprogramClientError("Luckin miniprogram request failed", 502);
+  }
+
+  try {
+    const parsed = parseLuckinResponseBody(
+      rawText,
+      response.headers.get("content-type"),
+      auth.aesKey,
+      path,
+    );
+    logMiniprogram("third_party.response", {
+      path,
+      code: parsed.code,
+      busiCode: parsed.busiCode,
+      msg: parsed.msg,
+      status: parsed.status,
+      loginState: parsed.loginState,
+      handler: parsed.handler,
+      hasContent: Boolean(parsed.content),
+      uid: parsed.uid ? "[present]" : "",
+      zeusId: parsed.zeusId,
+    });
+    return parsed;
+  } catch (error) {
+    logMiniprogramError("third_party.response.invalid", {
+      path,
+      error: error instanceof Error ? error.message : String(error),
+      rawLength: rawText.length,
+      rawPrefix: rawText.slice(0, 240),
+    });
+    throw new MiniprogramClientError(
+      "Invalid Luckin miniprogram response",
+      502,
+    );
+  }
 }
 
 function buildMiniprogramHeaders(

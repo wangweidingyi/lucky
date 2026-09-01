@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   createMiniprogramOrderForSellable,
   fetchMiniprogramCardProductsForSellable,
+  fetchMiniprogramCitiesForSellable,
   fetchMiniprogramProductDetailForSellable,
   generateMiniprogramSellablesForCard,
   switchMiniprogramProductAttributeForSellable,
@@ -123,6 +124,14 @@ async function firstGeneratedSellableForCard(coffeeCardId: number) {
 async function requestPayload(request: Request) {
   const rawBody = new TextDecoder().decode(await request.arrayBuffer());
   const params = new URLSearchParams(rawBody);
+  return requestPayloadFromParams(params);
+}
+
+function requestPayloadFromUrl(request: Request) {
+  return requestPayloadFromParams(new URL(request.url).searchParams);
+}
+
+function requestPayloadFromParams(params: URLSearchParams) {
   const body = Object.fromEntries(params.entries());
 
   expect(body).toEqual(
@@ -354,6 +363,81 @@ describe("miniprogram coffee-card ordering", () => {
       .bind(result.cards[0].id)
       .all();
     expect(sellables.results).toEqual([]);
+  });
+
+  it("fetches opening cities through the signed mini-program request", async () => {
+    const orderUserId = await createMiniprogramOrderUser();
+    const syncResult = await syncMiniprogramCoffeeCards(
+      env.DB,
+      async () =>
+        encryptedMiniprogramResponse({
+          code: 1,
+          content: {
+            planList: [
+              {
+                link: "/pages/index/menu?isCouponUse=true&couponNo=CK012&couponType=2",
+                coffeeStockTitle: "城市门店卡",
+                stockNum: 1,
+              },
+            ],
+          },
+        }),
+      { orderUserId },
+    );
+    const sellable = await firstGeneratedSellableForCard(
+      syncResult.cards[0].id,
+    );
+
+    const result = await fetchMiniprogramCitiesForSellable(
+      env.DB,
+      async (input, init) => {
+        const request = new Request(input, init);
+        expect(request.method).toBe("GET");
+        expect(request.url).toContain(
+          "https://capi.lkcoffee.com/resource/m/sys/app/openingcitys?",
+        );
+        expect(request.headers.get("cookie")).toBe(`uid=${miniprogramUid}`);
+        expect(requestPayloadFromUrl(request)).toEqual({});
+
+        return encryptedMiniprogramResponse({
+          code: 1,
+          status: "SUCCESS",
+          content: [
+            {
+              cityId: 2,
+              cityName: "上海市",
+              showName: "上海",
+              citySpell: "shanghai",
+            },
+            {
+              cityId: 1,
+              cityName: "北京市",
+              showName: "北京",
+              citySpell: "beijing",
+            },
+          ],
+        });
+      },
+      {
+        id: sellable?.id ?? "",
+        sign: sellable?.sign ?? "",
+      },
+    );
+
+    expect(result.cities).toEqual([
+      expect.objectContaining({
+        cityId: 2,
+        cityName: "上海市",
+        showName: "上海",
+        citySpell: "shanghai",
+      }),
+      expect.objectContaining({
+        cityId: 1,
+        cityName: "北京市",
+        showName: "北京",
+        citySpell: "beijing",
+      }),
+    ]);
   });
 
   it("fetches card usable products only after a sellable row and shop are selected", async () => {

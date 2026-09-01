@@ -29,7 +29,9 @@ import {
   coffeeStoreMatchPath,
   createPath,
   extractLuckinContent,
+  getLuckinJson,
   MiniprogramClientError,
+  openingCitysPath,
   orderDetailPath,
   payPath,
   postLuckinJson,
@@ -122,6 +124,7 @@ type ProductDetailInput = z.infer<typeof productDetailBodySchema>;
 type ProductAttributeSwitchInput = z.infer<
   typeof productAttributeSwitchBodySchema
 >;
+type CitiesInput = z.infer<typeof miniprogramSellableIdBodySchema>;
 type ShopQueryInput = z.infer<typeof shopQueryBodySchema>;
 type CreateOrderInput = z.infer<typeof createOrderBodySchema>;
 type OrderDetailInput = z.infer<typeof orderDetailBodySchema>;
@@ -394,6 +397,27 @@ export async function queryMiniprogramShopsForSellable(
   return {
     sellable: context,
     shops: extractShopList(content),
+  };
+}
+
+export async function fetchMiniprogramCitiesForSellable(
+  db: D1Database,
+  fetcher: typeof fetch,
+  input: CitiesInput,
+) {
+  const body = miniprogramSellableIdBodySchema.parse(input);
+  const context = await getSellableContextOrThrow(db, body.id, body.sign);
+  const orderUser = await getMiniprogramOrderUserOrThrow(
+    db,
+    context.orderUserId,
+  );
+  const auth = authFromMiniprogramOrderUser(orderUser);
+  const response = await getLuckinJson(fetcher, openingCitysPath, auth, {});
+  const content = extractLuckinContent(response, "opening cities");
+
+  return {
+    sellable: context,
+    cities: extractCityList(content),
   };
 }
 
@@ -875,6 +899,33 @@ function extractShopList(content: Record<string, unknown>) {
   const nearShop = isRecord(content.nearShop) ? [content.nearShop] : [];
 
   return [...nearShop, ...common, ...other].filter(isRecord);
+}
+
+function extractCityList(content: Record<string, unknown>) {
+  const source = Array.isArray(content)
+    ? content
+    : Array.isArray(content.cityList)
+      ? content.cityList
+      : Array.isArray(content.openingCityList)
+        ? content.openingCityList
+        : [];
+
+  return source.filter(isRecord).map((city) => ({
+    ...city,
+    cityId: numberValue(city.cityId) ?? numberValue(city.id),
+    cityName:
+      stringValue(city.cityName) ??
+      stringValue(city.name) ??
+      stringValue(city.showName),
+    showName:
+      stringValue(city.showName) ??
+      stringValue(city.cityName) ??
+      stringValue(city.name),
+    citySpell:
+      stringValue(city.citySpell) ??
+      stringValue(city.spell) ??
+      stringValue(city.pinyin),
+  }));
 }
 
 function buildProductDetailPayload(
@@ -1406,6 +1457,19 @@ hono.post("/shops/query", async (c: AppContext) => {
 
   try {
     return ok(c, await queryMiniprogramShopsForSellable(c.env.DB, fetch, body));
+  } catch (error) {
+    return handleMiniprogramError(c, error);
+  }
+});
+
+hono.post("/cities", async (c: AppContext) => {
+  const body = await parseBody(c, miniprogramSellableIdBodySchema);
+  if (isResponse(body)) {
+    return body;
+  }
+
+  try {
+    return ok(c, await fetchMiniprogramCitiesForSellable(c.env.DB, fetch, body));
   } catch (error) {
     return handleMiniprogramError(c, error);
   }
