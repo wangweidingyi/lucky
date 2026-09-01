@@ -7,6 +7,7 @@ import {
   fetchMiniprogramCitiesForSellable,
   fetchMiniprogramProductDetailForSellable,
   generateMiniprogramSellablesForCard,
+  queryMiniprogramShopsForSellable,
   switchMiniprogramProductAttributeForSellable,
   syncMiniprogramCoffeeCards,
 } from "../../src/controller/miniprogramorder/miniprogramorder";
@@ -436,6 +437,78 @@ describe("miniprogram coffee-card ordering", () => {
         cityName: "北京市",
         showName: "北京",
         citySpell: "beijing",
+      }),
+    ]);
+  });
+
+  it("searches shops by name or address without pagination parameters", async () => {
+    const orderUserId = await createMiniprogramOrderUser();
+    const syncResult = await syncMiniprogramCoffeeCards(
+      env.DB,
+      async () =>
+        encryptedMiniprogramResponse({
+          code: 1,
+          content: {
+            planList: [
+              {
+                link: "/pages/index/menu?isCouponUse=true&couponNo=CK090&couponType=2",
+                coffeeStockTitle: "搜索门店卡",
+                stockNum: 1,
+              },
+            ],
+          },
+        }),
+      { orderUserId },
+    );
+    const sellable = await firstGeneratedSellableForCard(syncResult.cards[0].id);
+
+    const fetcher: typeof fetch = async (input, init) => {
+      const request = new Request(input, init);
+      expect(request.method).toBe("POST");
+      expect(request.url).toBe("https://capi.lkcoffee.com/resource/m/shop/list");
+      expect(request.headers.get("cookie")).toBe(`uid=${miniprogramUid}`);
+      expect(await requestPayload(request)).toEqual({
+        longitude: 121.365,
+        latitude: 31.171,
+        userLongitude: 121.365,
+        userLatitude: 31.171,
+        channel: "GCJ-02",
+        cityId: 2,
+        searchValue: "虹桥",
+      });
+
+      return encryptedMiniprogramResponse({
+        code: 1,
+        content: {
+          shopList: [
+            {
+              deptId: 613299,
+              deptName: "上海虹桥天地店",
+              address: "申长路 688 号",
+            },
+          ],
+        },
+      });
+    };
+
+    const result = await queryMiniprogramShopsForSellable(
+      env.DB,
+      fetcher,
+      {
+        id: sellable?.id ?? "",
+        sign: sellable?.sign ?? "",
+        longitude: 121.365,
+        latitude: 31.171,
+        cityId: 2,
+        searchValue: "虹桥",
+      },
+    );
+
+    expect(result.shops).toEqual([
+      expect.objectContaining({
+        deptId: 613299,
+        deptName: "上海虹桥天地店",
+        address: "申长路 688 号",
       }),
     ]);
   });

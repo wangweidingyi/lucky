@@ -89,6 +89,7 @@ const shopQueryBodySchema = miniprogramSellableIdBodySchema.extend({
   longitude: z.number(),
   latitude: z.number(),
   cityId: z.union([z.number().int(), z.string()]).optional().default(""),
+  searchValue: z.string().optional(),
   deptName: z.string().optional(),
   offSet: z.number().int().nonnegative().optional().default(0),
   pageSize: z.number().int().positive().max(50).optional().default(10),
@@ -375,7 +376,7 @@ export async function queryMiniprogramShopsForSellable(
     context.orderUserId,
   );
   const auth = authFromMiniprogramOrderUser(orderUser);
-  const searchValue = body.deptName?.trim() ?? "";
+  const searchValue = body.searchValue?.trim() ?? body.deptName?.trim() ?? "";
   const response = await postLuckinJson(
     fetcher,
     searchValue ? shopSearchPath : shopListPath,
@@ -387,8 +388,6 @@ export async function queryMiniprogramShopsForSellable(
       userLatitude: body.latitude,
       channel: "GCJ-02",
       cityId: body.cityId,
-      offSet: body.offSet,
-      pageSize: body.pageSize,
       searchValue,
     },
   );
