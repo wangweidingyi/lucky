@@ -475,6 +475,7 @@ describe("miniprogram coffee-card ordering", () => {
         channel: "GCJ-02",
         cityId: 2,
         searchValue: "虹桥",
+        pageSize: 10,
       });
 
       return encryptedMiniprogramResponse({

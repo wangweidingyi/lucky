@@ -389,6 +389,7 @@ export async function queryMiniprogramShopsForSellable(
       channel: "GCJ-02",
       cityId: body.cityId,
       searchValue,
+      pageSize: body.pageSize,
     },
   );
   const content = extractLuckinContent(response, "shop list");
