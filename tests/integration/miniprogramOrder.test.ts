@@ -805,6 +805,7 @@ describe("miniprogram coffee-card ordering", () => {
               limitCouponCodeList: ["AUTO-LIMIT-SHOULD-NOT-CREATE"],
               dispatchCouponCodeList: ["AUTO-DISPATCH-SHOULD-NOT-CREATE"],
               cardCodeList: ["AUTO-MEMBER-CARD-SHOULD-NOT-CREATE"],
+              cardDiscount: 15,
               productDetailList: [
                 {
                   indexId: 1,
@@ -925,7 +926,7 @@ describe("miniprogram coffee-card ordering", () => {
       expect.objectContaining({
         deptId: "613299",
         delivery: "pick",
-        eatway: "eat",
+        eatway: "package",
         channel: "GCJ-02",
         appVersion: "5587",
         needs: null,
@@ -943,7 +944,7 @@ describe("miniprogram coffee-card ordering", () => {
       expect.objectContaining({
         deptId: "613299",
         delivery: "pick",
-        eatway: "eat",
+        eatway: "package",
         channel: "GCJ-02",
         appVersion: "5587",
         needs: null,
@@ -975,10 +976,10 @@ describe("miniprogram coffee-card ordering", () => {
     ]);
     expect(calls[3].payload).toEqual(
       expect.objectContaining({
-        couponCodeList: [],
-        limitCouponCodeList: [],
-        dispatchCouponList: [],
-        cardCodeList: [],
+        couponCodeList: ["AUTO-COUPON-SHOULD-NOT-CREATE"],
+        limitCouponCodeList: ["AUTO-LIMIT-SHOULD-NOT-CREATE"],
+        dispatchCouponList: ["AUTO-DISPATCH-SHOULD-NOT-CREATE"],
+        cardCodeList: ["AUTO-MEMBER-CARD-SHOULD-NOT-CREATE"],
       }),
     );
     expect(result.order).toEqual(
