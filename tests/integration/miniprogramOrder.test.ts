@@ -515,6 +515,76 @@ describe("miniprogram coffee-card ordering", () => {
     ]);
   });
 
+  it("accepts array shop search results from the mini-program search endpoint", async () => {
+    const orderUserId = await createMiniprogramOrderUser();
+    const syncResult = await syncMiniprogramCoffeeCards(
+      env.DB,
+      async () =>
+        encryptedMiniprogramResponse({
+          code: 1,
+          content: {
+            planList: [
+              {
+                link: "/pages/index/menu?isCouponUse=true&couponNo=CK090&couponType=2",
+                coffeeStockTitle: "搜索门店卡",
+                stockNum: 1,
+              },
+            ],
+          },
+        }),
+      { orderUserId },
+    );
+    const sellable = await firstGeneratedSellableForCard(syncResult.cards[0].id);
+
+    const fetcher: typeof fetch = async (input, init) => {
+      const request = new Request(input, init);
+      expect(request.url).toBe("https://capi.lkcoffee.com/resource/m/shop/list");
+      expect(await requestPayload(request)).toEqual({
+        longitude: 121.36507336460822,
+        latitude: 31.17091752884069,
+        userLongitude: 121.36507336460822,
+        userLatitude: 31.17091752884069,
+        channel: "GCJ-02",
+        cityId: 215,
+        searchValue: "揭东开发区店",
+        offSet: 0,
+        pageSize: 10,
+      });
+
+      return encryptedMiniprogramResponse({
+        code: 1,
+        content: [
+          {
+            deptId: 123456,
+            deptName: "揭东开发区店",
+            address: "广东省揭阳市揭东区某路",
+          },
+        ],
+      });
+    };
+
+    const result = await queryMiniprogramShopsForSellable(
+      env.DB,
+      fetcher,
+      {
+        id: sellable?.id ?? "",
+        sign: sellable?.sign ?? "",
+        longitude: 121.36507336460822,
+        latitude: 31.17091752884069,
+        cityId: 215,
+        searchValue: "揭东开发区店",
+      },
+    );
+
+    expect(result.shops).toEqual([
+      expect.objectContaining({
+        deptId: 123456,
+        deptName: "揭东开发区店",
+        address: "广东省揭阳市揭东区某路",
+      }),
+    ]);
+  });
+
   it("fetches card usable products only after a sellable row and shop are selected", async () => {
     const orderUserId = await createMiniprogramOrderUser();
     const syncResult = await syncMiniprogramCoffeeCards(

@@ -91,6 +91,9 @@ const shopQueryBodySchema = miniprogramSellableIdBodySchema.extend({
   cityId: z.union([z.number().int(), z.string()]).optional().default(""),
   searchValue: z.string().optional(),
   deptName: z.string().optional(),
+  productIdSaleCheck: z.union([z.number().int(), z.string()]).optional(),
+  scene: z.union([z.number().int(), z.string()]).optional(),
+  groupOrderType: z.union([z.number().int(), z.string()]).optional(),
   offSet: z.number().int().nonnegative().optional().default(0),
   pageSize: z.number().int().positive().max(50).optional().default(10),
 });
@@ -391,6 +394,13 @@ export async function queryMiniprogramShopsForSellable(
       searchValue,
       offSet: body.offSet,
       pageSize: body.pageSize,
+      ...(body.productIdSaleCheck !== undefined
+        ? { productIdSaleCheck: body.productIdSaleCheck }
+        : {}),
+      ...(body.scene !== undefined ? { scene: body.scene } : {}),
+      ...(body.groupOrderType !== undefined
+        ? { groupOrderType: body.groupOrderType }
+        : {}),
     },
   );
   const content = extractLuckinContent(response, "shop list");
@@ -886,7 +896,15 @@ function normalizeLuckinProduct(product: Record<string, unknown>) {
   };
 }
 
-function extractShopList(content: Record<string, unknown>) {
+function extractShopList(content: unknown) {
+  if (Array.isArray(content)) {
+    return content.filter(isRecord);
+  }
+
+  if (!isRecord(content)) {
+    return [];
+  }
+
   if (Array.isArray(content.shopList)) {
     return content.shopList;
   }
