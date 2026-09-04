@@ -946,6 +946,7 @@ describe("miniprogram coffee-card ordering", () => {
             code: 1,
             content: {
               discountPrice: 0,
+              eatway: "both",
               couponCodeList: ["AUTO-COUPON-SHOULD-NOT-CREATE"],
               limitCouponCodeList: ["AUTO-LIMIT-SHOULD-NOT-CREATE"],
               dispatchCouponCodeList: ["AUTO-DISPATCH-SHOULD-NOT-CREATE"],
