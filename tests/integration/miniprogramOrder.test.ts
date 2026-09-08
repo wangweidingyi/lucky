@@ -1097,7 +1097,7 @@ describe("miniprogram coffee-card ordering", () => {
         priority: 2,
         blackBox: "blackbox-test",
         did: "DXHQIwTYZMEwGKGPEj3jLbuxZ5z5zde0M5ac",
-        wxScene: 1001,
+        wxScene: 1256,
         miniversion: "5587",
       }),
     );

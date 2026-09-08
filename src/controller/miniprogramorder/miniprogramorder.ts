@@ -1121,7 +1121,7 @@ function buildCreatePayload(
     cashCardList: getArray(preview.cashCardList),
     blackBox: auth.blackBox ?? "",
     miniversion: auth.version,
-    wxScene: input.wxScene,
+    wxScene: 1256,
   };
 
   if (auth.deviceId) {
