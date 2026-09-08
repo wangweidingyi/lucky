@@ -1132,6 +1132,7 @@ function buildCreatePayload(
 }
 
 function resolveCreateEatway(preview: Record<string, unknown>) {
+    return "package";
   const previewEatway = stringValue(preview.eatway);
 
   if (previewEatway === "eat" || previewEatway === "package") {
