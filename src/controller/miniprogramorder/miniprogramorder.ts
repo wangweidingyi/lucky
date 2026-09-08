@@ -916,8 +916,8 @@ function extractShopList(content: unknown) {
     ? content.otherShopList
     : [];
   const nearShop = isRecord(content.nearShop) ? [content.nearShop] : [];
-
-  return [...nearShop, ...common, ...other].filter(isRecord);
+  return [ ...common].filter(isRecord);
+  // return [...nearShop, ...common, ...other].filter(isRecord);
 }
 
 function extractCityList(content: Record<string, unknown>) {
