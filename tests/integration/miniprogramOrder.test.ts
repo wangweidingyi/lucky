@@ -1072,7 +1072,7 @@ describe("miniprogram coffee-card ordering", () => {
       expect.objectContaining({
         deptId: "613299",
         delivery: "pick",
-        eatway: "package",
+        eatway: "eat",
         channel: "GCJ-02",
         appVersion: "5587",
         needs: null,
@@ -1090,7 +1090,7 @@ describe("miniprogram coffee-card ordering", () => {
       expect.objectContaining({
         deptId: "613299",
         delivery: "pick",
-        eatway: "package",
+        eatway: "eat",
         channel: "GCJ-02",
         appVersion: "5587",
         needs: null,

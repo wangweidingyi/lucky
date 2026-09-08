@@ -1091,7 +1091,7 @@ function buildCreatePayload(
     productList: mapCreateProductList(input, preview, coffeeStoreMatch, card),
     delivery: "pick",
     addressId: "",
-    eatway: resolveCreateEatway(preview),
+    eatway: "eat",
     couponCodeList: getArray(preview.couponCodeList),
     limitCouponCodeList: getArray(preview.limitCouponCodeList),
     remark: input.remark,
@@ -1129,17 +1129,6 @@ function buildCreatePayload(
   }
 
   return payload;
-}
-
-function resolveCreateEatway(preview: Record<string, unknown>) {
-    return "package";
-  const previewEatway = stringValue(preview.eatway);
-
-  if (previewEatway === "eat" || previewEatway === "package") {
-    return previewEatway;
-  }
-
-  return "package";
 }
 
 function buildPreCreatePayload(createPayload: Record<string, unknown>) {
